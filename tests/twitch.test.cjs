@@ -11,10 +11,10 @@ function fixture(t){
  twitch.status='ready';return {auth,logs,store,twitch,c,seen};
 }
 const event=(id='m1',more={})=>({id,text:'!кто',userId:'1',login:'viewer',name:'Viewer',channelId:'10',channel:'host',badges:{},...more});
-test('Sends as broadcaster via official API, isolates shared chat',async t=>{
+test('Sends with user-token parameters and ignores foreign shared-chat input',async t=>{
  const f=fixture(t),calls=[];f.twitch.api={chat:{sendChatMessage:async(...args)=>{calls.push(args);return{id:'out1'};}}};
  f.twitch.receive(event());await new Promise(r=>setImmediate(r));
- assert.equal(calls.length,1);assert.equal(calls[0][0],'10');assert.equal(calls[0][2].forSourceOnly,true);
+ assert.equal(calls.length,1);assert.equal(calls[0][0],'10');assert.equal(calls[0].length,2);
  assert.ok(f.seen.has('out1'));f.twitch.receive(event('foreign',{foreign:true}));assert.equal(calls.length,1);
 });
 test('Echo before send acknowledgement is suppressed',async t=>{

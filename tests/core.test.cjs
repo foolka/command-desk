@@ -73,6 +73,15 @@ test('Event replay, exact command boundary and cooldowns',t=>{
   now+=6000;assert.equal(e.receive(event('!кто',{id:'3'})),null);
   now+=10000;assert.ok(e.receive(event('!кто',{id:'4'})));
 });
+test('Fallback replies obey the same final message length limit',()=>{
+  const c=sample();
+  c.noTargetText='{args}';
+  c.steps[0].mode='random';
+  assert.throws(()=>evaluate(c,event('!кусь '+'a'.repeat(501)),new Audience()),/messageTooLong/);
+  c.steps[0].mode='argument';
+  c.invalidTargetText='{args}';
+  assert.throws(()=>evaluate(c,event('!кусь '+'a'.repeat(501)),new Audience()),/messageTooLong/);
+});
 test('Own manual commands allowed, echoes and shared chat ignored',t=>{
   const s=store(t);s.save({...sample('choice'),globalCooldown:0,userCooldown:0});const e=new Engine({store:s});
   assert.equal(e.receive(event('!кто',{id:'1',echo:true})),null);

@@ -48,6 +48,8 @@ The participant pool starts empty on each launch. It records chat activity, not 
 
 History retains 200 diagnostic/reply records and can be cleared. Bounded message IDs prevent reprocessing. The send queue holds 30 messages, expires at 20 seconds, and permits at most 20 sends per 30 seconds with 1.2-second spacing. Ambiguous network failures are never automatically resent. Shared-chat messages from other channels are ignored.
 
+When Shared Chat is active, Twitch distributes replies from the streamer's account to all participating channels. User-token replies cannot be restricted to the source channel.
+
 Twenty command/settings snapshots are retained in `backups`; credentials are excluded. Imports are additive and fully rejected on naming conflicts. An existing missing/corrupt/redirected database is never silently replaced. Uninstalling keeps the profile.
 
 The future OBS plugin is a separate product with its own repository and profile, not part of this release.

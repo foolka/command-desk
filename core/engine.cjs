@@ -1,7 +1,11 @@
 const {randomInt}=require('node:crypto');
 const {BASE,BOTS,normalize}=require('./model.cjs');
 const fill=(text,values)=>text.replace(/\{([a-z][a-z0-9_]*)\}/g,(_,key)=>values[key]??'');
-const output=text=>String(text).replace(/[\r\n\x00-\x1f\x7f]/g,' ').trim();
+const output=text=>{
+  const message=String(text).replace(/[\r\n\x00-\x1f\x7f]/g,' ').trim();
+  if(Array.from(message).length>500)throw Error('messageTooLong');
+  return message;
+};
 class Audience {
   constructor(now=Date.now){this.now=now;this.messages=[];}
   add(event){
@@ -50,7 +54,6 @@ function evaluate(command,event,audience,config={},rng=randomInt) {
     values[s.variable]=value;trace.push({variable:s.variable,value});
   }
   const messages=command.responses.map(t=>output(fill(t,values))).filter(Boolean);
-  if(messages.some(m=>Array.from(m).length>500))throw Error('messageTooLong');
   return {messages,trace,reason:'ready'};
 }
 class Engine {

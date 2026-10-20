@@ -64,7 +64,7 @@ class Twitch{
     this.lastSent=now;this.sentAt.push(now);
     this.outgoing.set(item.message,now+60000);
     try{
-      const sent=await this.api.chat.sendChatMessage(this.auth.saved.user.id,item.message,{forSourceOnly:true});
+      const sent=await this.api.chat.sendChatMessage(this.auth.saved.user.id,item.message);
       if(gen===this.generation){if(sent.id)this.store.claim(sent.id);this.store.log('sent',{command:item.command,user:item.user,message:item.message});}
     }catch(e){
       if(gen===this.generation)this.store.log('sendFailed',{command:item.command,status:Number(e.statusCode)||0});

@@ -1,0 +1,11 @@
+node_modules/
+release/
+test-output/
+*.sqlite*
+*.bin
+*.log
+*.jsonl
+.env*
+data/
+backups/
+portable-data/

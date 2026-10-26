@@ -36,8 +36,8 @@ function normalize(input) {
     const s={type:step.type,variable:clean(step.variable)};
     if(!TYPES.includes(s.type)||!/^[a-z][a-z0-9_]{0,23}$/.test(s.variable)||known.has(s.variable))throw Error('invalidVariable');
     if(s.type==='target') {
-      s.mode=step.mode||'argument_or_random';s.pool=step.pool||'minutes';s.allowSelf=!!step.allowSelf;
-      if(!['argument_or_random','random','self','argument'].includes(s.mode)||!['minutes','messages'].includes(s.pool))throw Error('invalidSteps');
+      s.mode=step.mode||'argument_or_random';s.pool='online';s.allowSelf=!!step.allowSelf;
+      if(!['argument_or_random','random','self','argument'].includes(s.mode))throw Error('invalidSteps');
     }else if(s.type==='choice') {
       s.choices=(Array.isArray(step.choices)?step.choices:clean(step.choices).split('\n')).map(v=>template(v,known)).filter(Boolean);
       if(!s.choices.length||s.choices.length>1000)throw Error('emptyChoices');

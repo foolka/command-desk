@@ -7,6 +7,7 @@ function cleanup(root){assert.ok(path.resolve(root).startsWith(path.resolve(os.t
 function temporary(t){const root=fs.mkdtempSync(path.join(os.tmpdir(),'command-desk-test-'));t.after(()=>cleanup(root));return root;}
 function store(t){const root=fs.mkdtempSync(path.join(os.tmpdir(),'command-desk-test-')),s=new Store(root);t.after(()=>{s.close();cleanup(root);});return s;}
 const event=(text='!кусь',extra={})=>({id:'1',userId:'1',name:'Alice',login:'alice',text,channel:'channel',channelId:'9',...extra});
+function online(names=[],now=Date.now){const a=new Audience(now);a.replace(names.map(name=>({id:name==='Alice'?'1':name,login:name.toLowerCase(),name})));return a;}
 test('Unicode triggers, aliases and all editable templates',()=>{
   const c=normalize({...sample(),trigger:'!КУСЬ',aliases:'!bite !хрусь',responses:['До {user}: {target}, после.']});
   const result=evaluate(c,event('!кусь @Bob'),new Audience());
@@ -22,23 +23,20 @@ test('Only preceding variables are accepted, no executable expressions',()=>{
   assert.throws(()=>normalize({...sample(),steps:[{type:'text',variable:'x',text:'{later}'}]}),/unknownVariable/);
   assert.throws(()=>normalize({...sample(),steps:[{type:'text',variable:'user',text:'x'}]}),/invalidVariable/);
 });
-test('Last 30 messages is distinct from last 15 minutes and deduplicates authors',()=>{
-  let now=0;const a=new Audience(()=>now);
-  a.add({userId:'a',name:'A',login:'a'});now=900001;
-  assert.equal(a.candidates('minutes',new Set(),'').length,0);
-  assert.equal(a.candidates('messages',new Set(),'').length,1);
-  for(let i=0;i<29;i++)a.add({userId:'b',name:'B',login:'b'});
-  assert.equal(a.candidates('messages',new Set(),'').length,2);
-  a.add({userId:'b',name:'B',login:'b'});
-  assert.deepEqual(a.candidates('messages',new Set(),'').map(x=>x.login),['b']);
+test('Online snapshots include silent users, deduplicate and remove users who left',()=>{
+  let now=0;const a=online(['Alice','Silent','Silent'],()=>now);
+  assert.equal(a.candidates(new Set(),'').length,2);
+  a.replace([{id:'silent',login:'silent',name:'Silent'}]);
+  assert.deepEqual(a.candidates(new Set(),'').map(x=>x.login),['silent']);
+  now=90000;assert.equal(a.status(),'onlineStale');assert.deepEqual(a.candidates(new Set(),''),[]);
 });
 test('Random candidates exclude bots, configured logins, channel and self',()=>{
-  const a=new Audience();for(const name of ['Alice','Bob','Nightbot','Hidden','Channel'])a.add({userId:name==='Alice'?'1':name,name,login:name.toLowerCase()});
+  const a=online(['Alice','Bob','Nightbot','Hidden','Channel']);
   const result=evaluate(sample(),event(),a,{excluded:['hidden']},()=>0);
   assert.equal(result.messages[0],'Alice кусает Bob!');
 });
 test('Empty pool and invalid nickname have editable replies or silence',()=>{
-  const c=sample();c.noTargetText='Нет цели для {user}';assert.equal(evaluate(c,event(),new Audience()).messages[0],'Нет цели для Alice');
+  const c=sample();c.noTargetText='Нет цели для {user}';assert.equal(evaluate(c,event(),online()).messages[0],'Нет цели для Alice');
   c.invalidTargetText='';assert.deepEqual(evaluate(c,event('!кусь bad/nick'),new Audience()).messages,[]);
 });
 test('Role checks do not grant VIP subscriber-only permissions',()=>{
@@ -70,14 +68,14 @@ test('Event replay, exact command boundary and cooldowns',t=>{
   assert.equal(e.receive(event('!ктото')),null);
   assert.ok(e.receive(event('!кто',{id:'2'})));
   assert.equal(e.receive(event('!кто',{id:'2'})),null);
-  now+=6000;assert.equal(e.receive(event('!кто',{id:'3'})),null);
+  now+=6000;assert.equal(e.receive(event('!кто',{id:'3'})).reason,'cooldownActive');
   now+=10000;assert.ok(e.receive(event('!кто',{id:'4'})));
 });
 test('Fallback replies obey the same final message length limit',()=>{
   const c=sample();
   c.noTargetText='{args}';
   c.steps[0].mode='random';
-  assert.throws(()=>evaluate(c,event('!кусь '+'a'.repeat(501)),new Audience()),/messageTooLong/);
+  assert.throws(()=>evaluate(c,event('!кусь '+'a'.repeat(501)),online()),/messageTooLong/);
   c.steps[0].mode='argument';
   c.invalidTargetText='{args}';
   assert.throws(()=>evaluate(c,event('!кусь '+'a'.repeat(501)),new Audience()),/messageTooLong/);
@@ -90,7 +88,7 @@ test('Own manual commands allowed, echoes and shared chat ignored',t=>{
 });
 test('Pause blocks commands, preview neither sends nor consumes cooldown',t=>{
   const s=store(t);s.save(sample());s.saveSettings({...s.settings(),paused:true});const e=new Engine({store:s});
-  assert.equal(e.receive(event('!кусь Bob')),null);
+  const result=e.receive(event('!кусь Bob'));assert.equal(result.reason,'commandsPaused');assert.deepEqual(result.messages,[]);
   assert.equal(e.preview(sample(),event('!кусь Bob'),[]).messages.length,1);
 });
 test('Final message length and integer bounds are enforced',()=>{
@@ -105,4 +103,42 @@ test('Profile selection cannot point tests at production',t=>{
 test('Translations have matching keys',()=>{
   const vm=require('node:vm');const dict=vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../ui/i18n.js'),'utf8')+';dictionaries');
   for(const lang of ['uk','en'])assert.deepEqual(Object.keys(dict[lang]).sort(),Object.keys(dict.ru).sort());
+});
+test('Known disabled commands and aliases explain silence without consuming cooldown',t=>{
+  const s=store(t),c=s.save({...sample('choice'),enabled:false,aliases:['!who']});
+  const e=new Engine({store:s});
+  const result=e.receive(event('!who',{id:'disabled'}));
+  assert.equal(result.reason,'commandDisabled');assert.equal(result.command,'!кто');assert.deepEqual(result.messages,[]);
+  assert.equal(e.cooldowns.size,0);
+  s.save({...c,enabled:true});assert.equal(e.receive(event('!who',{id:'enabled'})).messages.length,1);
+});
+test('Role rejection is reported without exposing unrelated messages',t=>{
+  const s=store(t);s.save({...sample('choice'),role:'mods'});const e=new Engine({store:s});
+  assert.equal(e.receive(event('!кто',{id:'role'})).reason,'roleBlocked');
+  assert.equal(e.receive(event('ordinary chat',{id:'ordinary'})),null);
+  assert.equal(e.receive(event('!unknown',{id:'unknown'})),null);
+  assert.equal(e.receive(event('!кто',{id:'bot',login:'nightbot'})),null);
+  assert.equal(e.cooldowns.size,0);
+});
+test('Legacy pools normalize to online without changing editable command content',()=>{
+  for(const pool of ['minutes','messages','online',undefined]){
+    const original={...sample(),responses:['До {user}, цель {target}, после.']};original.steps[0].pool=pool;
+    const converted=normalize(original);assert.equal(converted.steps[0].pool,'online');
+    assert.deepEqual({...converted,steps:original.steps},original);
+  }
+});
+test('Old stored commands use online snapshots and never collect targets from messages',t=>{
+  const s=store(t),c=s.save(sample());c.steps[0].pool='messages';s.commands=()=>[c];
+  const e=new Engine({store:s});
+  e.receive(event('hello',{id:'ordinary',userId:'Bob',login:'bob',name:'Bob'}));
+  assert.equal(e.receive(event('!кусь',{id:'before-list'})).reason,'onlineLoading');
+  assert.equal(e.cooldowns.size,0);
+  e.audience.replace([{id:'Silent',login:'silent',name:'Silent'}]);
+  assert.equal(e.receive(event('!кусь',{id:'after-list'})).messages[0],'Alice кусает Silent!');
+});
+test('Unavailable list blocks only random targets; explicit targets and choices work',()=>{
+  const a=new Audience();a.clear('onlinePermission');
+  assert.equal(evaluate(sample(),event(),a).reason,'onlinePermission');
+  assert.equal(evaluate(sample(),event('!кусь @Bob'),a).messages[0],'Alice кусает Bob!');
+  assert.equal(evaluate(sample('choice'),event('!кто'),a).messages.length,1);
 });

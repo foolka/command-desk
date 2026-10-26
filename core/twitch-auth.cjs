@@ -1,6 +1,7 @@
 const { EventEmitter } = require("node:events");
 const SCOPES = ["user:read:chat", "user:write:chat"];
-const LOGIN_SCOPES = [...SCOPES];
+const CHATTERS_SCOPE = "moderator:read:chatters";
+const LOGIN_SCOPES = [...SCOPES, CHATTERS_SCOPE];
 let sdkPromise;
 function loadSdk() {
   return (sdkPromise ||= Promise.all([
@@ -108,6 +109,7 @@ class TwitchAuth extends EventEmitter {
   }
   view() {
     return {
+      chattersAllowed: !!this.saved?.token?.scope?.includes(CHATTERS_SCOPE),
       user: this.saved?.user || null,
       reauthRequired: this.invalid,
       status: this.pending ? "authorizing" : this.health,
@@ -385,7 +387,7 @@ class TwitchAuth extends EventEmitter {
       throw publicError(this.message);
     }
     this.validatedAt = this.now();
-    // Keep optional permissions current without invalidating legacy reward-only logins.
+    // Existing chat permissions keep working while the user grants list access.
     if (
       JSON.stringify(this.saved.token.scope) !== JSON.stringify(info.scopes)
     ) {
@@ -441,6 +443,7 @@ module.exports = {
   TwitchAuth,
   SCOPES,
   LOGIN_SCOPES,
+  CHATTERS_SCOPE,
   clientId,
   loadSdk,
   errorCode,

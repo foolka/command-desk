@@ -43,6 +43,32 @@ test('SDK event adapter receives channel, user, badges and source',async t=>{
  }
  f.twitch.sdk=async()=>({ApiClient:class {},EventSubWsListener:Listener});f.twitch.test=false;
  let received;f.twitch.receive=e=>received=e;await f.twitch.tick();
- callback({messageId:'id',messageText:'!кто',chatterId:'1',chatterName:'viewer',chatterDisplayName:'Viewer',badges:{vip:'1'},sourceBroadcasterId:'99'});
+ const {EventSubChannelChatMessageEvent}=await import('@twurple/eventsub-base');
+ callback(new EventSubChannelChatMessageEvent({message_id:'id',message:{text:'!кто'},chatter_user_id:'1',chatter_user_login:'viewer',chatter_user_name:'Viewer',badges:[{set_id:'vip',id:'1',info:''}],source_broadcaster_user_id:'99'}));
  assert.equal(received.foreign,true);assert.equal(received.badges.vip,'1');assert.equal(f.twitch.status,'ready');
+ assert.equal(received.login,'viewer');assert.equal(received.userId,'1');assert.equal(received.text,'!кто');assert.equal(received.name,'Viewer');
+});
+test('Disabled commands produce a diagnostic but never send',async t=>{
+ const f=fixture(t);f.c.enabled=false;let count=0;
+ f.twitch.api={chat:{sendChatMessage:async()=>{count++;return{id:'out'};}}};
+ f.twitch.receive(event());await new Promise(r=>setImmediate(r));
+ assert.equal(count,0);assert.equal(f.twitch.queue.length,0);
+ assert.ok(f.logs.some(x=>x.code==='commandDisabled'&&x.command==='!кто'));
+});
+test('Real SDK sends as broadcaster with user scope and handles rejected delivery',async t=>{
+ const f=fixture(t),{ApiClient}=await import('@twurple/api');
+ const api=new ApiClient({authProvider:{clientId:'offline-test'}});let sent=true,calls=0;
+ // Replace the only HTTP boundary: no real credentials or network are used.
+ api.callApi=async request=>{
+  calls++;assert.equal(request.url,'chat/messages');assert.equal(request.userId,'10');
+  assert.deepEqual(request.scopes,['user:write:chat']);
+  assert.equal(request.query.sender_id,'10');assert.equal(request.query.broadcaster_id,'10');
+  assert.equal(typeof request.jsonBody.message,'string');
+  return {data:[{message_id:sent?'sdk-out':'',is_sent:sent,drop_reason:sent?null:{code:'blocked',message:'Test rejection'}}]};
+ };
+ f.twitch.api=api;f.twitch.receive(event('sdk-1'));await new Promise(r=>setImmediate(r));
+ assert.equal(calls,1);assert.ok(f.logs.some(x=>x.code==='sent'));assert.ok(f.seen.has('sdk-out'));
+ sent=false;f.twitch.lastSent=0;f.twitch.receive(event('sdk-2'));await new Promise(r=>setImmediate(r));
+ assert.equal(calls,2);assert.equal(f.logs.filter(x=>x.code==='sent').length,1);
+ assert.ok(f.logs.some(x=>x.code==='sendFailed'));
 });

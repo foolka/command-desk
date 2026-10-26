@@ -13,7 +13,17 @@ async function save(){await page.locator('button[type=submit]').click();await pa
 (async()=>{
  try{
   await launch();await act('create');await page.locator('[data-field=trigger]').waitFor();
-  await page.locator('[data-prop=pool]').selectOption('messages');
+  assert.equal(await page.locator('[data-field=enabled]').isChecked(),false);
+  assert.equal(await page.locator('.command-state').textContent(),'Выключена');
+  assert.match(await page.locator('#activity').textContent(),/0 \/ 1/);
+  await page.locator('[data-field=enabled]').check();
+  await save();
+  assert.equal(await page.locator('.command-state').textContent(),'Включена');
+  assert.match(await page.locator('#activity').textContent(),/1 \/ 1/);
+  await act('pause');assert.equal(await page.locator('#activity').textContent(),'Команды на паузе');
+  await act('pause');assert.match(await page.locator('#activity').textContent(),/1 \/ 1/);
+  assert.equal(await page.locator('[data-prop=pool]').count(),0);
+  assert.equal(await page.locator('input[readonly]').inputValue(),'Подключённые к чату Twitch');
   await act('addStep');
   await page.locator('[data-step="1"] [data-prop=type]').selectOption('number');
   await page.locator('[data-step="1"] [data-prop=variable]').fill('amount');
@@ -23,7 +33,7 @@ async function save(){await page.locator('button[type=submit]').click();await pa
   await save();
   await page.locator('#test-message').fill('!кусь @ViewerTwo');await act('test');
   await page.waitForFunction(()=>document.querySelector('#test-result')?.textContent.includes('ViewerOne кусает ViewerTwo 7 раз!'));
-  assert.equal(await page.locator('[data-prop=pool]').inputValue(),'messages');
+  assert.equal(await page.locator('[data-prop=pool]').count(),0);
   await page.screenshot({path:path.join(root,'docs/screenshots/editor-light.png')});
   await page.locator('#theme').click();await page.screenshot({path:path.join(root,'docs/screenshots/editor-dark.png')});
   for(const lang of ['uk','en','ru']){
@@ -40,12 +50,19 @@ async function save(){await page.locator('button[type=submit]').click();await pa
   await page.locator('[data-field=trigger]').fill('!');
   await page.waitForFunction(()=>document.querySelector('#save-status')?.textContent==='Черновик сохранён');
   await app.close();app=null;await launch();
+  const persisted=await page.evaluate(()=>window.desk.state());
+  assert.equal(persisted.value.commands.find(c=>c.trigger==='!кусь').enabled,true);
+  assert.equal(persisted.value.commands.find(c=>c.trigger==='!кто').enabled,false);
+  assert.match(await page.locator('#activity').textContent(),/1 \/ 2/);
   assert.equal(await page.locator('[data-field=name]').inputValue(),'Черновик после перезапуска');
   assert.equal(await page.locator('[data-field=trigger]').inputValue(),'!');
   assert.equal(await page.locator('.command-row').count(),2);
   await page.locator('[data-field=trigger]').fill('!кто');await save();
-  await page.locator('[data-view=connection]').click();
+  await page.locator('#nav [data-view=connection]').click();
   await page.screenshot({path:path.join(root,'docs/screenshots/connection.png')});
+  await page.locator('[data-view=audience]').click();
+  assert.equal(await page.locator('th').nth(1).textContent(),'Присутствие');
+  assert.ok((await page.locator('#main').textContent()).includes('Получаем список участников'));
   await page.locator('[data-view=commands]').click();
   await page.setViewportSize({width:960,height:720});
   const headerY=await page.locator('header').evaluate(e=>e.getBoundingClientRect().y);
@@ -53,6 +70,13 @@ async function save(){await page.locator('button[type=submit]').click();await pa
   assert.equal(await page.locator('header').evaluate(e=>e.getBoundingClientRect().y),headerY);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await page.screenshot({path:path.join(out,'compact.png')});
+  assert.equal(await page.locator('#audience-notice').isVisible(),false);
+  await page.evaluate(()=>{state.auth={...state.auth,user:{login:'TestChannel'},chattersAllowed:false};updateStatus();});
+  assert.equal(await page.locator('#audience-notice').isVisible(),true);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  await page.screenshot({path:path.join(out,'online-permission.png')});
+  await page.locator('#audience-notice button').click();
+  await page.locator('#auth-controls').waitFor();
   assert.deepEqual(errors,[]);console.log('UI verified: workflows, 3 languages, 2 themes, draft recovery, fixed header, compact layout.');
  }finally{
   if(app)await app.close();

@@ -23,15 +23,25 @@ function updateStatus(){
   const status=state.auth.status==='ready'?state.connection:state.auth.status;
   $('#status').textContent=(state.auth.user?.login?state.auth.user.login+' · ':'')+t(status);
   $('#status').className=status==='ready'?'connected':'';
+  $('#audience-notice').hidden=!state.auth.user||state.auth.chattersAllowed;
+  $('#audience-notice span').textContent=t('onlinePermission');
+  $('#audience-notice button').textContent=t('connection');
+  const activity=$('#activity');
+  if(activity){
+    const active=state.commands.filter(c=>c.enabled).length;
+    activity.textContent=state.settings.paused?t('commandsPaused'):`${t('activeCommands')}: ${active} / ${state.commands.length}`;
+    activity.classList.toggle('inactive',state.settings.paused||!active);
+  }
 }
 function renderNav(){
   $('#nav').innerHTML=['commands','audience','history','connection'].map((key,i)=>`<button class="${view===key?'active':''}" data-view="${key}">${icon(['terminal','users','history','plug'][i])}${esc(t(key))}</button>`).join('')+
-    `<div class="nav-spacer"></div>${iconButton('pause',state.settings.paused?'play':'pause',state.settings.paused?'resume':'pause')}`;
+    `<div class="nav-spacer"></div><span id="activity" role="status"></span>${iconButton('pause',state.settings.paused?'play':'pause',state.settings.paused?'resume':'pause')}`;
+  updateStatus();
 }
 function renderList(){
   const list=$('#command-list');if(!list)return;
   const matches=state.commands.filter(c=>(c.name+' '+c.trigger).toLowerCase().includes(query.toLowerCase()));
-  list.innerHTML=matches.map(c=>`<button class="command-row ${c.id===selected?'selected':''}" data-select="${c.id}"><span class="dot ${c.enabled?'on':''}"></span><span><strong>${esc(c.trigger)}</strong><small>${esc(c.name)}</small></span><span class="step-count">${c.steps.length}</span></button>`).join('');
+  list.innerHTML=matches.map(c=>`<button class="command-row ${c.id===selected?'selected':''}" data-select="${c.id}"><span class="dot ${c.enabled?'on':''}"></span><span><strong>${esc(c.trigger)}</strong><small>${esc(c.name)}</small><small class="command-state ${c.enabled?'on':''}">${t(c.enabled?'commandOn':'commandOff')}</small></span><span class="step-count">${c.steps.length}</span></button>`).join('');
   $('#command-count').textContent=state.commands.length;
 }
 function render(){
@@ -54,7 +64,7 @@ function renderEditor(){
     <section class="grid two">${label('name',input('name',draft.name,'text','maxlength="80"'))}
       ${label('trigger',input('trigger',draft.trigger,'text','maxlength="41"'),'triggerHelp')}
       ${label('aliases',input('aliases',Array.isArray(draft.aliases)?draft.aliases.join(' '):draft.aliases),'aliasHelp')}
-      <label class="check"><input data-field="enabled" type="checkbox" ${draft.enabled?'checked':''}>${t('enabled')}</label></section>
+      <label class="check"><input data-field="enabled" type="checkbox" ${draft.enabled?'checked':''}>${t('enabled')}${help('enabledHelp')}</label></section>
     <section><div class="section-title"><h3>${t('steps')}</h3><button type="button" data-action="addStep">${icon('plus')}${t('addStep')}</button></div>
       <div class="steps">${draft.steps.map(renderStep).join('')}</div></section>
     <section>${label('responses',textarea('responses',draft.responses),'responseHelp')}
@@ -71,7 +81,7 @@ function renderStep(s,index){
   const f=(key,tip='')=>label(key,prop(key,input(key,s[key]??'')),tip);
   let content='';
   if(s.type==='target')content=`<div class="grid two">${label('mode',prop('mode',select('mode',s.mode,['argument_or_random','random','self','argument'])),'targetHelp')}
-    ${label('pool',prop('pool',select('pool',s.pool,['minutes','messages'])),'poolHelp')}</div><label class="check"><input data-prop="allowSelf" type="checkbox" ${s.allowSelf?'checked':''}>${t('allowSelf')}</label>`;
+    ${label('pool',`<input value="${esc(t('onlinePool'))}" readonly>`,'poolHelp')}</div><label class="check"><input data-prop="allowSelf" type="checkbox" ${s.allowSelf?'checked':''}>${t('allowSelf')}</label>`;
   if(s.type==='choice')content=label('choices',prop('choices',textarea('choices',s.choices,4)));
   if(s.type==='number')content=`<div class="grid two">${label('min',prop('min',input('min',s.min,'number','min="-1000000" max="1000000"')))}${label('max',prop('max',input('max',s.max,'number','min="-1000000" max="1000000"')))}</div>`;
   if(s.type==='text')content=label('textValue',prop('text',textarea('text',s.text,2)),'variableHelp');
@@ -92,7 +102,7 @@ async function persistDraft(){
   dirty=true;const value=structuredClone(draft);await call('draft',value);
   if($('#save-status'))$('#save-status').textContent=t('draft');
 }
-function stepDefaults(type,variable){return {type,variable,mode:'argument_or_random',pool:'minutes',allowSelf:false,choices:[''],min:1,max:100,text:''};}
+function stepDefaults(type,variable){return {type,variable,mode:'argument_or_random',pool:'online',allowSelf:false,choices:[''],min:1,max:100,text:''};}
 function renderSimulation(){
   $('#simulation').innerHTML=`<h3>${t('simulation')}${help('previewHelp')}</h3>
     ${label('testUser',`<input id="test-user" maxlength="25" value="${esc(testValues.user)}">`)}
@@ -108,6 +118,7 @@ function renderConnection(){
     <strong id="account-name">${esc(state.auth.user?.login||t('signed_out'))}</strong><div class="notice">${t('authNote')}</div>
     <div id="auth-controls"></div></section><section>${label('excluded',`<textarea id="excluded" rows="6">${esc(state.settings.excluded.join('\n'))}</textarea>`,'exclusionHelp')}<button class="primary" data-action="saveExcluded">${icon('save')}${t('save')}</button></section>
     <section><h3>${t('profile')}</h3><div class="data-path">${esc(state.dataPath)}</div><div class="notice">${t('privacy')}</div><div class="tools"><button data-action="openProfile">${icon('folder-open')}${t('profile')}</button><button data-action="backup">${icon('archive')}${t('backup')}</button></div></section></div></div>`;
+  $('#main .settings-page').append(document.createElement('desk-taskbar'));
   renderAuth();
 }
 function renderAuth(){
@@ -118,9 +129,9 @@ function renderAuth(){
 }
 function renderTable(){
   const people=view==='audience';
-  $('#main').innerHTML=`<div class="page-scroll"><div class="section-title"><h2>${t(view)}</h2>${people?`<span>${state.audience.length}</span>`:`<button data-action="clearHistory">${icon('trash-2')}${t('clearHistory')}</button>`}</div><table><thead><tr>${(people?['name','lastSeen']:['time','event','details']).map(k=>`<th>${t(k)}</th>`).join('')}</tr></thead><tbody>${
-    people?state.audience.map(p=>`<tr><td>${esc(p.name)} <span class="muted">@${esc(p.login)}</span></td><td>${new Date(p.at).toLocaleTimeString()}</td></tr>`).join(''):
-      state.history.map(r=>`<tr><td>${new Date(r.at).toLocaleTimeString()}</td><td>${t(r.code)}</td><td>${esc(r.data.command||'')} ${esc(r.data.message||'')}${r.data.status?esc(t(r.data.status)):''}${r.data.code?esc(t(r.data.code)):''}</td></tr>`).join('')
+  $('#main').innerHTML=`<div class="page-scroll"><div class="section-title"><h2>${t(view)}</h2>${people?`<span>${state.audience.length}</span>`:`<button data-action="clearHistory">${icon('trash-2')}${t('clearHistory')}</button>`}</div>${people?`<div class="notice">${t(state.audienceStatus)}${state.audienceUpdatedAt!==null?' · '+new Date(state.audienceUpdatedAt).toLocaleTimeString():''}${help('poolHelp')}</div>`:''}<table><thead><tr>${(people?['name','presence']:['time','event','details']).map(k=>`<th>${t(k)}</th>`).join('')}</tr></thead><tbody>${
+    people?state.audience.map(p=>`<tr><td>${esc(p.name)} <span class="muted">@${esc(p.login)}</span></td><td>${t('inChat')}</td></tr>`).join(''):
+      state.history.map(r=>`<tr><td>${new Date(r.at).toLocaleTimeString()}</td><td>${t(r.code)}</td><td>${esc(r.data.command||'')} ${esc(r.data.message||'')}${r.data.status?esc(typeof r.data.status==='number'?'HTTP '+r.data.status:t(r.data.status)):''}${r.data.code?esc(t(r.data.code)):''}${r.data.count!==undefined?esc(r.data.count):''}</td></tr>`).join('')
   }</tbody></table>${(people?state.audience:state.history).length?'':`<div class="empty">${t(people?'noAudience':'noHistory')}</div>`}</div>`;
 }
 async function refresh(){

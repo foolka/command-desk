@@ -4,7 +4,7 @@ const {pathToFileURL}=require('node:url');
 const {Store,selectProfile,atomic}=require('./core/store.cjs');
 const {TwitchAuth}=require('./core/twitch-auth.cjs');
 const {Twitch}=require('./core/twitch.cjs');
-const {sample}=require('./core/model.cjs');
+const {sample,BOTS}=require('./core/model.cjs');
 const test=process.argv.includes('--test-mode'),startTray=process.argv.includes('--start-tray');
 let startupError;
 try{app.setPath('userData',selectProfile(path.join(app.getPath('appData'),'CommandDesk'),test,process.env.COMMAND_DESK_TEST_DATA));}catch(e){startupError=e;}
@@ -18,7 +18,9 @@ function secretSave(name,value){
 }
 function secretLoad(name){const file=path.join(root,name);if(!fs.existsSync(file))return null;try{return JSON.parse(safeStorage.decryptString(fs.readFileSync(file)));}catch{throw Error('secureStorage');}}
 function state(){return {version:app.getVersion(),settings:store.settings(),commands:store.commands(),draft:store.meta('draft'),history:store.history(),
-  auth:{...auth.view(),message:undefined},connection:twitch.status,audience:twitch.engine.audience.candidates('minutes',new Set(),'',true),
+  auth:{...auth.view(),message:undefined},connection:twitch.status,
+  audience:twitch.engine.audience.candidates(new Set([...BOTS,...store.settings().excluded,auth.saved?.user.login||'']),'',true),
+  audienceStatus:twitch.engine.audience.status(),audienceUpdatedAt:twitch.engine.audience.updatedAt,
   queue:twitch.queue.length,dataPath:root,test};}
 function show(){if(win&&!win.isDestroyed()){win.show();if(win.isMinimized())win.restore();win.focus();}}
 function theme(){nativeTheme.themeSource=store.settings().theme;win?.setBackgroundColor(store.settings().theme==='dark'?'#191c20':'#f5f7f8');}
@@ -31,6 +33,7 @@ app.whenReady().then(async()=>{
   win=new BrowserWindow({width:1400,height:920,minWidth:940,minHeight:680,title:'Command Desk',icon:path.join(__dirname,'assets/icon.ico'),show:false,autoHideMenuBar:true,
     webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
   win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+  require('./core/taskbar.cjs').attachTaskbar({app,shell,ipcMain,win,test,name:'Command Desk',appId:'com.fermionaplay.commanddesk'});
   win.webContents.on('will-navigate',(e,url)=>{if(url!==uiUrl)e.preventDefault();});
   win.webContents.session.setPermissionRequestHandler((_,__,cb)=>cb(false));
   const actions={

@@ -1,9 +1,10 @@
-const {loadSdk}=require('./twitch-auth.cjs');
+const {loadSdk,CHATTERS_SCOPE}=require('./twitch-auth.cjs');
 const {Engine}=require('./engine.cjs');
 class Twitch{
-  constructor({auth,store,sdk=loadSdk,test=false}){
-    Object.assign(this,{auth,store,sdk,test});
-    this.engine=new Engine({store});this.generation=0;this.queue=[];this.status='offline';this.sentAt=[];this.outgoing=new Map();
+  constructor({auth,store,sdk=loadSdk,test=false,now=Date.now}){
+    Object.assign(this,{auth,store,sdk,test,now});
+    this.engine=new Engine({store,now});this.generation=0;this.queue=[];this.status='offline';this.sentAt=[];this.outgoing=new Map();
+    this.audienceNextAt=0;this.audienceJob=null;
     auth.on('authorized',()=>{this.stop();if(!test)void this.tick();});
     auth.on('expired',()=>this.stop());auth.on('retry',()=>this.stop());
     if(!test){this.timer=setInterval(()=>void this.tick(),15000);this.timer.unref();}
@@ -12,6 +13,7 @@ class Twitch{
   stop(){
     this.generation++;this.listener?.stop();this.listener=null;this.api=null;
     this.queue=[];clearTimeout(this.sendTimer);this.engine.reset();this.set('offline');
+    this.audienceJob=null;this.audienceNextAt=0;this.engine.audience.clear('onlineOffline');
   }
   async tick(){
     if(this.test||this.busy||!this.auth.saved||this.auth.invalid)return;
@@ -25,10 +27,10 @@ class Twitch{
         const listener=new sdk.EventSubWsListener({apiClient:this.api,logger:{minLevel:'error'}});
         this.listener=listener;this.socketSince=Date.now();this.set('connecting');
         const current=()=>gen===this.generation;
-        listener.onSubscriptionCreateSuccess(()=>{if(current())this.set('ready');});
+        listener.onSubscriptionCreateSuccess(()=>{if(current()){this.set('ready');void this.refreshAudience();}});
         listener.onSubscriptionCreateFailure(()=>{if(current())this.set('error');});
         listener.onRevoke(()=>{if(current()){this.stop();this.auth.invalidate('Нужно заново войти через Twitch и разрешить доступ.');}});
-        listener.onUserSocketDisconnect(()=>{if(current()){this.socketSince=Date.now();this.queue=[];this.set('reconnecting');}});
+        listener.onUserSocketDisconnect(()=>{if(current()){this.socketSince=Date.now();this.queue=[];this.audienceJob=null;this.audienceNextAt=0;this.engine.audience.clear('onlineOffline');this.set('reconnecting');}});
         listener.onChannelChatMessage(user.id,user.id,event=>{
           if(!current())return;
           this.receive({id:event.messageId,text:event.messageText,userId:event.chatterId,login:event.chatterName,name:event.chatterDisplayName,
@@ -37,8 +39,53 @@ class Twitch{
         listener.start();
       }
       if(this.status!=='ready'&&Date.now()-this.socketSince>120000)this.stop();
+      if(this.status==='ready')void this.refreshAudience();
     }catch{if(gen===this.generation){this.stop();this.set('error');}}
     finally{this.busy=false;}
+  }
+  async refreshAudience(){
+    if(!this.api||this.status!=='ready')return;
+    const audience=this.engine.audience;
+    if(!this.auth.saved?.token?.scope?.includes(CHATTERS_SCOPE)){
+      if(audience.status()!=='onlinePermission')this.store.log('onlinePermission');
+      audience.clear('onlinePermission');return;
+    }
+    if(this.audienceJob||this.now()<this.audienceNextAt)return;
+    const api=this.api,user=this.auth.saved.user.id,gen=this.generation,job={};
+    this.audienceJob=job;this.audienceNextAt=this.now()+30000;
+    const current=()=>this.audienceJob===job&&this.generation===gen;
+    let timeout;
+    try{
+      // Commit only a complete snapshot: a failed later page must not bias the draw.
+      const fetchAll=async()=>{
+        const users=[],cursors=new Set();let after;
+        for(let page=0;page<100;page++){
+          if(!current())return [];
+          const result=await api.chat.getChatters(user,{limit:1000,after});
+          if(!current())return [];
+          for(const item of result.data){
+            if(!item.userId||!item.userName)throw Error('invalidChatter');
+            users.push({id:item.userId,login:item.userName,name:item.userDisplayName||item.userName});
+          }
+          after=result.cursor;
+          if(!after)return users;
+          if(cursors.has(after))throw Error('repeatedCursor');
+          cursors.add(after);
+        }
+        throw Error('incompleteChatters');
+      };
+      const users=await Promise.race([fetchAll(),new Promise((_,reject)=>{
+        timeout=setTimeout(()=>reject(Error('chattersTimeout')),20000);timeout.unref?.();
+      })]);
+      if(!current())return;
+      const previous=audience.status();audience.replace(users);
+      if(previous!=='onlineReady')this.store.log('onlineReady',{count:audience.users.length});
+    }catch(error){
+      if(!current())return;
+      const reason=error?.statusCode===403||error?.name==='MissingScopeError'?'onlinePermission':'onlineUnavailable';
+      if(audience.status()!==reason)this.store.log(reason,{status:Number(error?.statusCode)||0});
+      audience.clear(reason);
+    }finally{clearTimeout(timeout);if(current())this.audienceJob=null;}
   }
   receive(event){
     try{

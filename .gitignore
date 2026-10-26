@@ -9,3 +9,5 @@ test-output/
 data/
 backups/
 portable-data/
+/core/taskbar-native.node
+/test-results/taskbar/

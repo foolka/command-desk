@@ -7,19 +7,17 @@ const output=text=>{
   return message;
 };
 class Audience {
-  constructor(now=Date.now){this.now=now;this.messages=[];}
-  add(event){
-    const at=this.now();
-    this.messages.push({id:event.userId,login:event.login,name:event.name,at});
-    const keepFrom=this.messages.length-30;
-    this.messages=this.messages.filter((m,i)=>at-m.at<=900000||i>=keepFrom).slice(-50000);
+  constructor(now=Date.now){this.now=now;this.clear();}
+  replace(users){
+    this.users=[...new Map(users.map(u=>[u.id,u])).values()];
+    this.updatedAt=this.now();this.reason='onlineReady';
   }
-  candidates(pool,excluded,author,allowSelf=false) {
-    const now=this.now(),messages=this.messages.filter(m=>now-m.at<=900000);
-    const source=pool==='messages'?this.messages.slice(-30):messages;
-    return [...new Map(source.map(m=>[m.id,m])).values()].filter(m=>!excluded.has(m.login.toLowerCase())&&(allowSelf||m.id!==author));
+  status(){return this.reason==='onlineReady'&&this.now()-this.updatedAt>=90000?'onlineStale':this.reason;}
+  candidates(excluded,author,allowSelf=false) {
+    if(this.status()!=='onlineReady')return [];
+    return this.users.filter(m=>!excluded.has(m.login.toLowerCase())&&(allowSelf||m.id!==author));
   }
-  clear(){this.messages=[];}
+  clear(reason='onlineLoading'){this.users=[];this.updatedAt=null;this.reason=reason;}
 }
 function roleAllowed(role,badges={}) {
   const has=key=>Object.hasOwn(badges,key);
@@ -44,7 +42,8 @@ function evaluate(command,event,audience,config={},rng=randomInt) {
         if(!/^[a-z0-9_]{1,25}$/i.test(nick))return {messages:command.invalidTargetText?[output(fill(command.invalidTargetText,values))]:[],trace,reason:'invalidTarget'};
         value=nick;
       }else{
-        const candidates=audience.candidates(s.pool,excluded,event.userId,s.allowSelf);
+        if(audience.status()!=='onlineReady')return {messages:[],trace,reason:audience.status()};
+        const candidates=audience.candidates(excluded,event.userId,s.allowSelf);
         if(!candidates.length)return {messages:command.noTargetText?[output(fill(command.noTargetText,values))]:[],trace,reason:'noTarget'};
         value=candidates[rng(candidates.length)].name;
       }
@@ -65,21 +64,26 @@ class Engine {
     const config=this.store.settings();
     // Ignore shared-chat neighbours and messages emitted by this application.
     if(event.foreign||event.echo)return null;
-    this.audience.add(event);
-    if(config.paused||[...BOTS,...config.excluded].includes(event.login.toLowerCase()))return null;
+    if([...BOTS,...config.excluded].includes(event.login.toLowerCase()))return null;
     const trigger=event.text.trim().split(/\s+/u)[0].toLowerCase();
     if(!trigger.startsWith('!'))return null;
-    const c=this.store.commands().find(c=>c.enabled&&(c.trigger===trigger||c.aliases.includes(trigger)));
-    if(!c||!roleAllowed(c.role,event.badges))return null;
+    const c=this.store.commands().find(c=>c.trigger===trigger||c.aliases.includes(trigger));
+    if(!c)return null;
+    const skipped=reason=>({command:c.trigger,user:event.login,messages:[],trace:[],reason});
+    if(config.paused)return skipped('commandsPaused');
+    if(!c.enabled)return skipped('commandDisabled');
+    if(!roleAllowed(c.role,event.badges))return skipped('roleBlocked');
     const now=this.now(),global=c.id,user=c.id+':'+event.userId;
-    if(now<(this.cooldowns.get(global)||0)||now<(this.cooldowns.get(user)||0))return null;
+    if(now<(this.cooldowns.get(global)||0)||now<(this.cooldowns.get(user)||0))return skipped('cooldownActive');
+    const result={command:c.trigger,user:event.login,...evaluate(c,event,this.audience,config,this.rng)};
+    if(result.reason.startsWith('online'))return result;
     this.cooldowns.set(global,now+c.globalCooldown*1000);this.cooldowns.set(user,now+c.userCooldown*1000);
     if(this.cooldowns.size>20000)for(const [k,v]of this.cooldowns)if(v<=now)this.cooldowns.delete(k);
-    return {command:c.trigger,user:event.login,...evaluate(c,event,this.audience,config,this.rng)};
+    return result;
   }
   preview(input,event,names){
     const audience=new Audience(this.now);
-    for(const [i,name]of names.entries())audience.add({userId:'preview-'+i,login:name.toLowerCase(),name});
+    audience.replace(names.map((name,i)=>({id:'preview-'+i,login:name.toLowerCase(),name})));
     return evaluate(normalize(input),event,audience,this.store.settings(),this.rng);
   }
 }

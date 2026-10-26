@@ -2,7 +2,7 @@
 
 [Русский](../README.md) · [Українська](README.uk.md)
 
-Private release **0.1.0**. A local Windows Twitch command builder that replies as the broadcaster. No separate bot account, Streamer.bot or hosted backend is required.
+Private release **0.2.0**. A local Windows Twitch command builder that replies as the broadcaster. No separate bot account, Streamer.bot or hosted backend is required.
 
 ![Command editor](screenshots/editor-light.png)
 
@@ -11,7 +11,7 @@ Private release **0.1.0**. A local Windows Twitch command builder that replies a
 - Editable commands and aliases, including Cyrillic.
 - Up to 12 ordered steps: participant selection, a random line, an integer, or intermediate text.
 - Fully editable replies with named variables anywhere in the text; up to three messages per invocation.
-- Random participants from the last 15 minutes or the last 30 received messages. Every unique eligible person has the same chance; repeated messages do not increase it.
+- Random participants from Twitch's connected chat users, including silent users. Refreshed approximately every 30 seconds, independent of message history. Every unique eligible person has the same chance.
 - An explicit username argument can replace a random target. Online presence is not verified.
 - Roles, cooldowns, pause, bot exclusions, replay and self-reply protection.
 - A local simulator that never posts to Twitch, persistent drafts, backups, additive import/export.
@@ -30,6 +30,8 @@ Builds are currently unsigned. Check the release source and SHA-256; do not disa
 
 Open Connection → Sign in with Twitch → Open Twitch and authorize using the displayed code. Create a command, edit its steps, run a local test, then enable and save it. New commands start disabled. The window close button exits; the separate tray button hides it. `--start-tray` starts without showing the window.
 
+After updating from 0.1.x, sign in with Twitch once more to grant `moderator:read:chatters`. Existing commands and text are preserved and use the new participant source without resaving. Until permission is granted, random targets are unavailable; explicit usernames and random text replies still work.
+
 ## Templates
 
 Built-ins: `{user}`, `{login}`, `{channel}`, `{command}`, `{args}`, `{arg1}`. Each step defines another result, such as `{target}`, `{choice}` or `{amount}`. Results may be used by later steps and replies.
@@ -42,9 +44,9 @@ Each reply line is a separate chat message, limited to 500 final characters. Unk
 
 ## Data and Limits
 
-Twitch permissions: `user:read:chat`, `user:write:chat`. Tokens are encrypted with Windows secure storage. There is no embedded client secret, analytics or developer upload.
+Twitch permissions: `user:read:chat`, `user:write:chat`, `moderator:read:chatters`. Tokens are encrypted with Windows secure storage. There is no embedded client secret, analytics or developer upload.
 
-The participant pool starts empty on each launch. It records chat activity, not all viewers. Activity is memory-only, capped at 50,000 records; the last 30 messages remain eligible in that mode until replaced, even after 15 minutes. Known bots and configured exclusions are omitted, but bot detection is not infallible.
+The memory-only participant list comes from [Get Chatters](https://dev.twitch.tv/docs/api/reference#get-chatters), not chat messages. It includes connected chat users, not every video viewer, and Twitch reports joins/leaves with a delay. All pages must load before replacing the list. Failed requests or a snapshot older than 90 seconds suspend random targets and report the reason in the interface/history; there is no fallback to old messages. Known bots and configured exclusions are omitted, but bot detection is not infallible.
 
 History retains 200 diagnostic/reply records and can be cleared. Bounded message IDs prevent reprocessing. The send queue holds 30 messages, expires at 20 seconds, and permits at most 20 sends per 30 seconds with 1.2-second spacing. Ambiguous network failures are never automatically resent. Shared-chat messages from other channels are ignored.
 

@@ -1,7 +1,8 @@
 const { EventEmitter } = require("node:events");
 const SCOPES = ["user:read:chat", "user:write:chat"];
 const CHATTERS_SCOPE = "moderator:read:chatters";
-const LOGIN_SCOPES = [...SCOPES, CHATTERS_SCOPE];
+const ANNOUNCEMENTS_SCOPE = "moderator:manage:announcements";
+const LOGIN_SCOPES = [...SCOPES, CHATTERS_SCOPE, ANNOUNCEMENTS_SCOPE];
 let sdkPromise;
 function loadSdk() {
   return (sdkPromise ||= Promise.all([
@@ -110,6 +111,7 @@ class TwitchAuth extends EventEmitter {
   view() {
     return {
       chattersAllowed: !!this.saved?.token?.scope?.includes(CHATTERS_SCOPE),
+      announcementsAllowed: !!this.saved?.token?.scope?.includes(ANNOUNCEMENTS_SCOPE),
       user: this.saved?.user || null,
       reauthRequired: this.invalid,
       status: this.pending ? "authorizing" : this.health,

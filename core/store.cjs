@@ -12,7 +12,7 @@ function selectProfile(production,test,override){
   return path.resolve(override);
 }
 class Store{
-  constructor(root,now=Date.now){
+  constructor(root,now=Date.now,options={}){
     this.root=root;this.now=now;this.claims=0;
     fs.mkdirSync(root,{recursive:true});
     const file=path.join(root,'commands.sqlite'),marker=path.join(root,'profile-identity.json');
@@ -42,7 +42,20 @@ class Store{
         CREATE TABLE IF NOT EXISTS history(id INTEGER PRIMARY KEY,at INTEGER,code TEXT,data TEXT);
         CREATE TABLE IF NOT EXISTS seen(id TEXT PRIMARY KEY,at INTEGER);`);
       this.db.exec('PRAGMA user_version=1');
-      if(!exists){this.setMeta('id',randomUUID());this.setMeta('settings',settings());}
+      if(!exists){
+        this.db.exec('BEGIN IMMEDIATE');
+        try{
+          this.setMeta('id',randomUUID());this.setMeta('settings',settings());
+          if(options.starter){
+            const catalog=require('./examples.cjs').examples(options.language||this.settings().language);
+            for(const {command} of catalog)this.db.prepare('INSERT INTO commands VALUES(?,?)').run(command.id,JSON.stringify(command));
+            this.setMeta('exampleCatalogV1',Object.fromEntries(catalog.map(({key,command})=>[key,command.id])));
+            this.setMeta('announcements',[require('./examples.cjs').starterAnnouncement(options.language||this.settings().language)]);
+            this.setMeta('starterCatalogV1',true);
+          }
+          this.db.exec('COMMIT');
+        }catch(error){this.db.exec('ROLLBACK');throw error;}
+      }
       if(!fs.existsSync(marker))atomic(marker,JSON.stringify({version:1,id:this.meta('id')}));
       this.db.prepare('DELETE FROM seen WHERE at<?').run(now()-86400000);
     }catch(e){this.db.close();throw e;}
@@ -61,7 +74,7 @@ class Store{
   backup(){
     const folder=path.join(this.root,'backups');fs.mkdirSync(folder,{recursive:true});
     const file=path.join(folder,`${this.now()}-${randomUUID()}.json`);
-    atomic(file,JSON.stringify({version:1,commands:this.commands(),settings:this.settings()},null,2));
+    atomic(file,JSON.stringify({version:1,commands:this.commands(),settings:this.settings(),announcements:this.meta('announcements',[]),announcementSettings:this.meta('announcementSettings'),draft:this.meta('draft'),timerDraft:this.meta('timerDraft')},null,2));
     const files=fs.readdirSync(folder).filter(n=>/^\d+-[a-f0-9-]+\.json$/.test(n)).sort();
     for(const old of files.slice(0,-20))fs.unlinkSync(path.join(folder,old));
   }
@@ -72,6 +85,41 @@ class Store{
     return c;
   }
   remove(id){if(!this.commands().some(c=>c.id===id))throw Error('notFound');this.backup();this.db.prepare('DELETE FROM commands WHERE id=?').run(id);}
+  setEnabled({id,enabled}){
+    const command=this.commands().find(c=>c.id===id);if(!command)throw Error('notFound');
+    this.backup();command.enabled=!!enabled;
+    this.db.prepare('UPDATE commands SET data=? WHERE id=?').run(JSON.stringify(command),id);
+    const draft=this.meta('draft');if(draft?.id===id)this.setMeta('draft',{...draft,enabled:!!enabled});
+    return command;
+  }
+  addExamples(language=this.settings().language){
+    const ids=this.meta('exampleCatalogV1',{}),added=[],existing=this.commands();
+    for(const {key,command} of require('./examples.cjs').examples(language)){
+      if(ids[key])continue;
+      const base=command.trigger;let n=2;
+      while([...existing,...added].some(c=>[c.trigger,...c.aliases].includes(command.trigger)))command.trigger=base+n++;
+      ids[key]=command.id;added.push(command);
+    }
+    if(!added.length)return added;
+    this.validateNames([...existing,...added]);this.backup();this.db.exec('BEGIN IMMEDIATE');
+    try{
+      for(const command of added)this.db.prepare('INSERT INTO commands VALUES(?,?)').run(command.id,JSON.stringify(command));
+      this.setMeta('exampleCatalogV1',ids);this.db.exec('COMMIT');
+    }catch(error){this.db.exec('ROLLBACK');throw error;}
+    return added;
+  }
+  saveTimer(input){
+    const timer=require('./announcements.cjs').normalizeTimer(input),all=this.meta('announcements',[]);
+    const index=all.findIndex(t=>t.id===timer.id);if(index<0&&all.length>=100)throw Error('tooLong');
+    this.backup();if(index<0)all.push(timer);else all[index]=timer;
+    this.setMeta('announcements',all);return timer;
+  }
+  removeTimer(id){this.backup();this.setMeta('announcements',this.meta('announcements',[]).filter(t=>t.id!==id));}
+  saveAnnouncementSettings(input){
+    const value={intervalMinutes:Number(input.intervalMinutes),minMessages:Number(input.minMessages),onlyLive:!!input.onlyLive};
+    if(!Number.isInteger(value.intervalMinutes)||value.intervalMinutes<1||value.intervalMinutes>1440||!Number.isInteger(value.minMessages)||value.minMessages<0||value.minMessages>10000)throw Error('invalidNumber');
+    this.backup();this.setMeta('announcementSettings',value);return value;
+  }
   import(data){
     if(data?.version!==1||!Array.isArray(data.commands)||data.commands.length>1000)throw Error('invalidImport');
     const incoming=data.commands.map(c=>normalize({...c,id:randomUUID()}));

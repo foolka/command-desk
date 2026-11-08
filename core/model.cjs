@@ -1,6 +1,6 @@
 const {randomUUID}=require('node:crypto');
 const TYPES=['target','choice','number','text'];
-const BASE=['user','login','channel','args','arg1','command'];
+const BASE=['user','login','channel','args','arg1','command','commands'];
 const BOTS=['streamelements','streamlabs','nightbot','moobot','wizebot','fossabot','sery_bot'];
 const clean=value=>String(value??'').normalize('NFC').trim();
 const trigger=value=>{
@@ -28,9 +28,13 @@ function normalize(input) {
   const c={id:input.id||randomUUID(),name:text(input.name||input.trigger,80),trigger:trigger(input.trigger),
     aliases:[...new Set(clean(input.aliases instanceof Array?input.aliases.join('\n'):input.aliases).split(/[\s,]+/u).filter(Boolean).map(trigger))],
     enabled:input.enabled!==false,role:input.role||'everyone',globalCooldown:number(input.globalCooldown??5,0,86400),
-    userCooldown:number(input.userCooldown??15,0,86400),steps:[],responses:[]};
+    userCooldown:number(input.userCooldown??15,0,86400),steps:[],responses:[],
+    responseMode:input.responseMode||'all',delivery:input.delivery||'message',color:input.color||'primary'};
+  if(!['all','random'].includes(c.responseMode)||!['message','announcement'].includes(c.delivery)||!['primary','blue','green','orange','purple'].includes(c.color))throw Error('invalidCommand');
   if(!/^[a-f0-9-]{36}$/.test(c.id)||c.aliases.length>20||!['everyone','subscribers','vips','mods','broadcaster'].includes(c.role))throw Error('invalidCommand');
   const known=new Set(BASE);
+  // Older workflows could already use this name for a step result.
+  if(Array.isArray(input.steps)&&input.steps.some(step=>step.variable==='commands'))known.delete('commands');
   if(!Array.isArray(input.steps)||input.steps.length>12)throw Error('invalidSteps');
   for(const step of input.steps) {
     const s={type:step.type,variable:clean(step.variable)};
@@ -48,7 +52,7 @@ function normalize(input) {
     c.steps.push(s);known.add(s.variable);
   }
   c.responses=(Array.isArray(input.responses)?input.responses:clean(input.responses).split('\n')).map(v=>template(v,known)).filter(Boolean);
-  if(!c.responses.length||c.responses.length>3)throw Error('invalidResponses');
+  if(!c.responses.length||c.responses.length>(c.responseMode==='random'?100:3))throw Error('invalidResponses');
   c.noTargetText=template(input.noTargetText??'',new Set(BASE));
   c.invalidTargetText=template(input.invalidTargetText??'',new Set(BASE));
   return c;

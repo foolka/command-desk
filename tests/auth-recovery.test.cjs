@@ -100,11 +100,12 @@ test("saved identity is restoring, not proof of valid authorization", async (t) 
 test('New sign-in requests chatter permission while old chat-only login stays valid',async t=>{
   const f=fixture(t);await f.auth.getProvider();assert.equal(f.auth.invalid,false);
   f.sdk.startDeviceCodeFlow=async(id,scopes)=>{
-    assert.equal(id,CLIENT);assert.deepEqual(scopes,[...SCOPES,CHATTERS_SCOPE]);
+    assert.equal(id,CLIENT);assert.deepEqual(scopes,[...SCOPES,CHATTERS_SCOPE,'moderator:manage:announcements']);
     return {deviceCode:'test-device',userCode:'TEST',verificationUri:'https://www.twitch.tv/activate',expiresIn:600,interval:5};
   };
   await f.auth.start(CLIENT);assert.deepEqual(f.auth.pending.scopes,LOGIN_SCOPES);
   f.auth.saved.token={...token,scope:LOGIN_SCOPES};assert.equal(f.auth.view().chattersAllowed,true);
+  assert.equal(f.auth.view().announcementsAllowed,true);
 });
 test("network, 429 and 5xx validation failures keep credentials and recover without refresh or login", async (t) => {
   for (const error of [

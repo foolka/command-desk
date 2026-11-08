@@ -2,27 +2,29 @@
 
 [Русский](../README.md) · [Українська](README.uk.md)
 
-Private release **0.2.0**. A local Windows Twitch command builder that replies as the broadcaster. No separate bot account, Streamer.bot or hosted backend is required.
+Public release **0.3.1**. A local Windows Twitch command builder that replies as the broadcaster. No separate bot account, Streamer.bot or hosted backend is required.
 
-![Command editor](screenshots/editor-light.png)
+Fresh profiles include **10 editable commands and a command-list auto announcement**, all disabled until you choose to enable them. Updates never overwrite existing commands or restore deleted examples. [Launch Desk OBS](https://github.com/foolka/launch-desk-obs) 0.3.0+ can start the app normally or in the tray with OBS. Timed messages support `{commands}` for currently enabled commands available to everyone; empty or over-500-character results are skipped.
+
+![Command builder](screenshots/en/builder.png)
 
 ## Features
 
 - Editable commands and aliases, including Cyrillic.
 - Up to 12 ordered steps: participant selection, a random line, an integer, or intermediate text.
-- Fully editable replies with named variables anywhere in the text; up to three messages per invocation.
+- A clear template picker, three-stage builder, immediate enable switch, clickable variables and viewport-safe tooltips.
+- Editable replies: send all lines (up to three), or one random line from up to 100 variants. Ten disabled examples cover bites, hugs, roles, numbers, text, combined workflows and information announcements.
 - Random participants from Twitch's connected chat users, including silent users. Refreshed approximately every 30 seconds, independent of message history. Every unique eligible person has the same chance.
 - An explicit username argument can replace a random target. Online presence is not verified.
 - Roles, cooldowns, pause, bot exclusions, replay and self-reply protection.
 - A local simulator that never posts to Twitch, persistent drafts, backups, additive import/export.
 - Russian, Ukrainian and English; light and dark themes. Switching language leaves user-authored content unchanged.
 
-![Dark theme](screenshots/editor-dark.png)
-![Random response](screenshots/random-reply.png)
+![Reply variations](screenshots/en/replies.png)
 
 ## Install
 
-Download the EXE installer or portable ZIP from the private [Releases](https://github.com/foolka/command-desk/releases). Windows 10/11 x64.
+Download the EXE installer or portable ZIP from [Releases](https://github.com/foolka/command-desk/releases). Windows 10/11 x64.
 
 The installer uses `%LOCALAPPDATA%\Programs\Command Desk`. Extract the portable ZIP and run `CommandDesk.exe` without installing. **Both builds use `%APPDATA%\CommandDesk` for the same Windows user**, not a database beside the executable. This avoids divergent profiles when folders or shortcuts change. Only one instance can run. To move to another computer, export your commands and sign in again.
 
@@ -32,6 +34,14 @@ Open Connection → Sign in with Twitch → Open Twitch and authorize using the 
 
 After updating from 0.1.x, sign in with Twitch once more to grant `moderator:read:chatters`. Existing commands and text are preserved and use the new participant source without resaving. Until permission is granted, random targets are unavailable; explicit usernames and random text replies still work.
 
+## Announcements
+
+Sign in with Twitch again to grant `moderator:manage:announcements`. Ordinary commands keep working with existing permissions. Choose Twitch announcement as a command's output format; replace placeholder Telegram/Discord text with your actual links. `{commands}` lists enabled commands available to the caller.
+
+Auto announcements have editable text, color, interval and minimum viewer messages. Both conditions must pass, together with global limits (defaults: 10 minutes, 5 messages, live streams only). Intervals range from 1 minute to 24 hours; zero messages disables that condition. Own messages, known bots, exclusions, shared-chat neighbours and duplicate events do not count. Every app announcement resets the global message gate. Identical texts are suppressed for the global interval. Blocks rotate fairly, restart waits a full interval, and ambiguous network failures are not retried. `{commands}` is replaced with enabled public commands; other text is literal. Shared Chat may distribute announcements to participating channels.
+
+![Auto announcements](screenshots/en/announcements.png)
+
 ## Templates
 
 Built-ins: `{user}`, `{login}`, `{channel}`, `{command}`, `{args}`, `{arg1}`. Each step defines another result, such as `{target}`, `{choice}` or `{amount}`. Results may be used by later steps and replies.
@@ -40,11 +50,11 @@ Built-ins: `{user}`, `{login}`, `{channel}`, `{command}`, `{args}`, `{arg1}`. Ea
 {user} {action} {target} {amount} times!
 ```
 
-Each reply line is a separate chat message, limited to 500 final characters. Unknown or forward-referenced variables prevent saving. Templates do not execute code. Missing-target and invalid-username replies are editable; leave them empty to stay silent.
+All mode sends each reply line; Random mode sends one randomly selected line. Replies are limited to 500 final characters. Unknown or forward-referenced variables prevent saving. Templates do not execute code. Missing-target and invalid-username replies are editable; leave them empty to stay silent.
 
 ## Data and Limits
 
-Twitch permissions: `user:read:chat`, `user:write:chat`, `moderator:read:chatters`. Tokens are encrypted with Windows secure storage. There is no embedded client secret, analytics or developer upload.
+Twitch permissions: `user:read:chat`, `user:write:chat`, `moderator:read:chatters`, `moderator:manage:announcements`. Tokens are encrypted with Windows secure storage. There is no embedded client secret, analytics or developer upload.
 
 The memory-only participant list comes from [Get Chatters](https://dev.twitch.tv/docs/api/reference#get-chatters), not chat messages. It includes connected chat users, not every video viewer, and Twitch reports joins/leaves with a delay. All pages must load before replacing the list. Failed requests or a snapshot older than 90 seconds suspend random targets and report the reason in the interface/history; there is no fallback to old messages. Known bots and configured exclusions are omitted, but bot detection is not infallible.
 

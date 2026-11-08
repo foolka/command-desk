@@ -29,7 +29,7 @@ function roleAllowed(role,badges={}) {
 }
 function evaluate(command,event,audience,config={},rng=randomInt) {
   const parts=event.text.trim().split(/\s+/u);
-  const values=Object.assign(Object.create(null),{user:event.name||event.login,login:event.login,channel:event.channel||'',args:parts.slice(1).join(' '),arg1:parts[1]||'',command:parts[0]});
+  const values=Object.assign(Object.create(null),{user:event.name||event.login,login:event.login,channel:event.channel||'',args:parts.slice(1).join(' '),arg1:parts[1]||'',command:parts[0],commands:config.commandList||''});
   const excluded=new Set([...BOTS,...(config.excluded||[]),event.channel||''].map(s=>s.toLowerCase()));
   const trace=[];
   for(const s of command.steps) {
@@ -52,7 +52,8 @@ function evaluate(command,event,audience,config={},rng=randomInt) {
     else value=fill(s.text,values);
     values[s.variable]=value;trace.push({variable:s.variable,value});
   }
-  const messages=command.responses.map(t=>output(fill(t,values))).filter(Boolean);
+  const replies=command.responseMode==='random'?[command.responses[rng(command.responses.length)]]:command.responses;
+  const messages=replies.map(t=>output(fill(t,values))).filter(Boolean);
   return {messages,trace,reason:'ready'};
 }
 class Engine {
@@ -75,7 +76,8 @@ class Engine {
     if(!roleAllowed(c.role,event.badges))return skipped('roleBlocked');
     const now=this.now(),global=c.id,user=c.id+':'+event.userId;
     if(now<(this.cooldowns.get(global)||0)||now<(this.cooldowns.get(user)||0))return skipped('cooldownActive');
-    const result={command:c.trigger,user:event.login,...evaluate(c,event,this.audience,config,this.rng)};
+    config.commandList=this.store.commands().filter(item=>item.enabled&&roleAllowed(item.role,event.badges)).map(item=>item.trigger).join(', ');
+    const result={command:c.trigger,user:event.login,delivery:c.delivery||'message',color:c.color||'primary',...evaluate(c,event,this.audience,config,this.rng)};
     if(result.reason.startsWith('online'))return result;
     this.cooldowns.set(global,now+c.globalCooldown*1000);this.cooldowns.set(user,now+c.userCooldown*1000);
     if(this.cooldowns.size>20000)for(const [k,v]of this.cooldowns)if(v<=now)this.cooldowns.delete(k);
@@ -84,7 +86,7 @@ class Engine {
   preview(input,event,names){
     const audience=new Audience(this.now);
     audience.replace(names.map((name,i)=>({id:'preview-'+i,login:name.toLowerCase(),name})));
-    return evaluate(normalize(input),event,audience,this.store.settings(),this.rng);
+    return evaluate(normalize(input),event,audience,{...this.store.settings(),commandList:this.store.commands().filter(c=>c.enabled).map(c=>c.trigger).join(', ')},this.rng);
   }
 }
 module.exports={Audience,Engine,evaluate,fill,roleAllowed,output};

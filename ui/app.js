@@ -3,7 +3,7 @@ const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>
 const t=key=>dictionaries[state?.settings.language||'ru'][key]||dictionaries.en[key]||dictionaries.en.operationFailed;
 const icon=name=>`<i data-lucide="${name}"></i>`;
 const iconButton=(action,name,label,extra='')=>`<button type="button" class="icon" data-action="${action}" title="${esc(t(label))}" aria-label="${esc(t(label))}" ${extra}>${icon(name)}</button>`;
-const help=key=>`<span class="help" tabindex="0" role="note" aria-label="${esc(t(key))}">${icon('circle-help')}<span class="tooltip">${esc(t(key))}</span></span>`;
+const help=key=>`<span class="help" tabindex="0" role="note" data-help="${esc(t(key))}" aria-label="${esc(t(key))}">${icon('circle-help')}</span>`;
 const label=(key,content,tip='')=>`<label><span>${esc(t(key))}${tip?help(tip):''}</span>${content}</label>`;
 const input=(field,value,type='text',extra='')=>`<input data-field="${field}" type="${type}" value="${esc(value)}" ${extra}>`;
 const textarea=(field,value,rows=3)=>`<textarea data-field="${field}" rows="${rows}">${esc(Array.isArray(value)?value.join('\n'):value)}</textarea>`;
@@ -17,7 +17,7 @@ function applyAppearance(){
   document.documentElement.dataset.theme=state.settings.theme;document.documentElement.lang=state.settings.language;
   $('#language').value=state.settings.language;$('#theme').innerHTML=icon(state.settings.theme==='dark'?'sun':'moon');$('#theme').title=t('theme');$('#theme').ariaLabel=t('theme');
   $('#tray').innerHTML=icon('panel-top-close');$('#tray').title=t('tray');$('#tray').ariaLabel=t('tray');
-  $('.version').textContent='PRIVATE '+state.version;updateStatus();
+  $('.version').textContent='v'+state.version;updateStatus();
 }
 function updateStatus(){
   const status=state.auth.status==='ready'?state.connection:state.auth.status;
@@ -26,6 +26,9 @@ function updateStatus(){
   $('#audience-notice').hidden=!state.auth.user||state.auth.chattersAllowed;
   $('#audience-notice span').textContent=t('onlinePermission');
   $('#audience-notice button').textContent=t('connection');
+  const notice=$('.b-announcement-warning');
+  if(notice)notice.hidden=!!state.auth.announcementsAllowed||(view==='commands'&&draft?.delivery!=='announcement');
+  const live=$('[data-live-state]');if(live)live.textContent=t(state.live?'liveNow':'notLive');
   const activity=$('#activity');
   if(activity){
     const active=state.commands.filter(c=>c.enabled).length;
@@ -34,7 +37,7 @@ function updateStatus(){
   }
 }
 function renderNav(){
-  $('#nav').innerHTML=['commands','audience','history','connection'].map((key,i)=>`<button class="${view===key?'active':''}" data-view="${key}">${icon(['terminal','users','history','plug'][i])}${esc(t(key))}</button>`).join('')+
+  $('#nav').innerHTML=['commands','autoAnnouncements','audience','history','connection'].map((key,i)=>`<button class="${view===key?'active':''}" data-view="${key}">${icon(['terminal','megaphone','users','history','plug'][i])}${esc(t(key))}</button>`).join('')+
     `<div class="nav-spacer"></div><span id="activity" role="status"></span>${iconButton('pause',state.settings.paused?'play':'pause',state.settings.paused?'resume':'pause')}`;
   updateStatus();
 }
@@ -48,33 +51,45 @@ function render(){
   applyAppearance();renderNav();
   if(view==='commands'){
     $('#main').innerHTML=`<aside class="sidebar"><div class="section-title"><h2>${t('commands')}</h2><span id="command-count"></span></div>
-      <div class="new-controls"><select id="new-kind" aria-label="${esc(t('newCommand'))}">${options(['targetExample','choiceExample'],'targetExample')}</select><button class="primary icon" data-action="create" title="${esc(t('newCommand'))}" aria-label="${esc(t('newCommand'))}">${icon('plus')}</button></div>
+      <div class="b-builder-tools"><button class="primary b-action" data-action="create">${icon('plus')}${t('newCommand')}</button><button class="b-action" data-action="examples">${icon('book-open')}${t('examples')}</button></div>
       <input id="search" aria-label="${esc(t('search'))}" placeholder="${esc(t('search'))}" value="${esc(query)}">
       <div id="command-list"></div><div class="sidebar-bottom">${iconButton('import','upload','import')}${iconButton('export','download','export')}</div></aside>
       <div class="workspace"><div id="editor"></div><aside id="simulation"></aside></div>`;
     renderList();renderEditor();renderSimulation();
   }else if(view==='connection')renderConnection();
+  else if(view==='autoAnnouncements')renderAnnouncements();
   else renderTable();
   icons();
 }
 function renderEditor(){
+  const scroll=$('.editor-scroll')?.scrollTop||0;
   if(!draft){$('#editor').innerHTML=`<div class="empty">${icon('terminal')}<h2>${t('empty')}</h2><button class="primary" data-action="create">${icon('plus')}${t('newCommand')}</button></div>`;return;}
+  draft.enabled=state.commands.find(command=>command.id===draft.id)?.enabled??false;
   $('#editor').innerHTML=`<form id="command-form"><div class="editor-scroll">
     <div class="section-title"><h2>${esc(draft.name)}</h2>${iconButton('delete','trash-2','delete')}</div>
-    <section class="grid two">${label('name',input('name',draft.name,'text','maxlength="80"'))}
+    <button type="button" role="switch" aria-checked="${!!draft.enabled}" class="b-command-switch" data-action="toggleCommand" aria-label="${t(draft.enabled?'commandDisable':'commandEnable')}">
+      ${icon('power')}<span>${t(draft.enabled?'commandIsOn':'commandIsOff')}</span><span class="b-command-switch__state">${t(draft.enabled?'commandDisable':'commandEnable')}</span>
+    </button>
+    <section><h3 class="b-stage"><span class="b-stage__number">1</span>${t('when')}${help('enabledHelp')}</h3><div class="grid two">${label('name',input('name',draft.name,'text','maxlength="80"'))}
       ${label('trigger',input('trigger',draft.trigger,'text','maxlength="41"'),'triggerHelp')}
       ${label('aliases',input('aliases',Array.isArray(draft.aliases)?draft.aliases.join(' '):draft.aliases),'aliasHelp')}
-      <label class="check"><input data-field="enabled" type="checkbox" ${draft.enabled?'checked':''}>${t('enabled')}${help('enabledHelp')}</label></section>
-    <section><div class="section-title"><h3>${t('steps')}</h3><button type="button" data-action="addStep">${icon('plus')}${t('addStep')}</button></div>
-      <div class="steps">${draft.steps.map(renderStep).join('')}</div></section>
-    <section>${label('responses',textarea('responses',draft.responses),'responseHelp')}
-      <div class="variables"><span>${t('variables')}</span>${['user','login','channel','args','arg1','command',...draft.steps.map(s=>s.variable)].map(v=>`<code>{${esc(v)}}</code>`).join('')}</div>
+      </div></section>
+    <section><h3 class="b-stage"><span class="b-stage__number">2</span>${t('build')}</h3>
+      <div class="steps">${draft.steps.map(renderStep).join('')||`<div class="notice">${t('noSteps')}</div>`}</div>
+      <div class="b-steps-add">${['target','choice','number','text'].map((kind,i)=>`<button type="button" class="b-action" data-action="addStep" data-kind="${kind}">${icon(['user-round','shuffle','dices','text-cursor-input'][i])}${t(kind)}</button>`).join('')}</div></section>
+    <section><h3 class="b-stage"><span class="b-stage__number">3</span>${t('send')}</h3>
+      <div class="grid two">${label('delivery',select('delivery',draft.delivery||'message',['message','announcement']))}${label('color',select('color',draft.color||'primary',['primary','blue','green','orange','purple']).replace('data-field="color"',`data-field="color" ${draft.delivery==='announcement'?'':'disabled'}`))}</div>
+      <div class="b-announcement-warning" ${draft.delivery==='announcement'&&!state.auth.announcementsAllowed?'':'hidden'}>${t('announcementPermission')} <button type="button" data-view="connection">${t('connection')}</button></div>
+      <div class="b-segment" role="group" aria-label="${t('responseMode')}">${['all','random'].map(mode=>`<button type="button" class="b-segment__button" data-action="replyMode" data-mode="${mode}" aria-pressed="${(draft.responseMode||'all')===mode}">${icon(mode==='random'?'shuffle':'list')}${t(mode==='random'?'randomReply':'all')}</button>`).join('')}</div>
+      ${label('responses',textarea('responses',draft.responses,5),'responseHelp')}
+      <div class="variables"><span>${t('variables')}</span>${['user','login','channel','args','arg1','command','commands',...draft.steps.map(s=>s.variable)].map(v=>`<button type="button" class="b-variable" data-action="insertVariable" data-variable="${esc(v)}" title="${esc(dictionaries[state.settings.language]['variable_'+v]||v)}">{${esc(v)}}</button>`).join('')}</div>
       <div class="grid two fallback">${label('noTargetText',input('noTargetText',draft.noTargetText))}
       ${label('invalidTargetText',input('invalidTargetText',draft.invalidTargetText))}</div></section>
     <section class="grid three">${label('role',select('role',draft.role,['everyone','subscribers','vips','mods','broadcaster']))}
       ${label('globalCooldown',input('globalCooldown',draft.globalCooldown,'number','min="0" max="86400"'),'cooldownHelp')}
       ${label('userCooldown',input('userCooldown',draft.userCooldown,'number','min="0" max="86400"'),'cooldownHelp')}</section>
     </div><footer><span id="save-status">${t(dirty?'draft':'saved')}</span><div class="tools">${iconButton('discard','undo-2','discard')}<button type="submit" class="primary">${icon('save')}${t('save')}</button></div></footer></form>`;
+  $('.editor-scroll').scrollTop=scroll;
 }
 function renderStep(s,index){
   const prop=(key,html)=>html.replace(/data-field=/g,'data-prop=');
@@ -85,7 +100,7 @@ function renderStep(s,index){
   if(s.type==='choice')content=label('choices',prop('choices',textarea('choices',s.choices,4)));
   if(s.type==='number')content=`<div class="grid two">${label('min',prop('min',input('min',s.min,'number','min="-1000000" max="1000000"')))}${label('max',prop('max',input('max',s.max,'number','min="-1000000" max="1000000"')))}</div>`;
   if(s.type==='text')content=label('textValue',prop('text',textarea('text',s.text,2)),'variableHelp');
-  return `<div class="step" data-step="${index}"><div class="step-heading"><span class="step-index">${index+1}</span><select data-prop="type" aria-label="${t('steps')}">${options(['target','choice','number','text'],s.type)}</select>
+  return `<div class="step" data-step="${index}"><div class="step-heading"><span class="step-index">${index+1}</span>${icon({target:'user-round',choice:'shuffle',number:'dices',text:'text-cursor-input'}[s.type])}<span class="b-step-label">${t(s.type)}</span>
     <div class="tools">${iconButton('up','arrow-up','up',`data-index="${index}" ${index===0?'disabled':''}`)}${iconButton('down','arrow-down','down',`data-index="${index}" ${index===draft.steps.length-1?'disabled':''}`)}${iconButton('removeStep','x','removeStep',`data-index="${index}"`)}</div></div>
     ${f('variable','variableHelp')}${content}</div>`;
 }
@@ -115,7 +130,7 @@ function renderResult(){return testResult?`<div class="trace">${testResult.trace
   ${testResult.messages.length?testResult.messages.map(m=>`<div class="chat-reply">${esc(m)}</div>`).join(''):`<div class="muted">${t(testResult.reason||'noOutput')}</div>`}`:'<div class="muted">…</div>';}
 function renderConnection(){
   $('#main').innerHTML=`<div class="page-scroll"><div class="settings-page"><h2>${t('connection')}</h2><section><h3>${t('account')}</h3>
-    <strong id="account-name">${esc(state.auth.user?.login||t('signed_out'))}</strong><div class="notice">${t('authNote')}</div>
+    <strong id="account-name">${esc(state.auth.user?.login||t('signed_out'))}</strong><div class="notice">${t('authNote')}</div><div class="notice">${t('announcementNote')}</div><div class="b-announcement-warning" ${state.auth.announcementsAllowed?'hidden':''}>${t('announcementPermission')}</div>
     <div id="auth-controls"></div></section><section>${label('excluded',`<textarea id="excluded" rows="6">${esc(state.settings.excluded.join('\n'))}</textarea>`,'exclusionHelp')}<button class="primary" data-action="saveExcluded">${icon('save')}${t('save')}</button></section>
     <section><h3>${t('profile')}</h3><div class="data-path">${esc(state.dataPath)}</div><div class="notice">${t('privacy')}</div><div class="tools"><button data-action="openProfile">${icon('folder-open')}${t('profile')}</button><button data-action="backup">${icon('archive')}${t('backup')}</button></div></section></div></div>`;
   $('#main .settings-page').append(document.createElement('desk-taskbar'));
@@ -155,14 +170,21 @@ document.addEventListener('change',e=>void guard(async()=>{
     collect();const index=Number(e.target.closest('[data-step]').dataset.step);
     draft.steps[index]=stepDefaults(e.target.value,draft.steps[index].variable);await persistDraft();renderEditor();icons();
   }
-  if(e.target.id==='language'){collect();state.settings=await call('settings',{...state.settings,language:e.target.value});render();}
+  if(e.target.id==='language'){
+    if(view==='autoAnnouncements')await persistTimerDraft();
+    collect();state.settings=await call('settings',{...state.settings,language:e.target.value});render();
+  }
+  if(e.target.dataset.field==='delivery'){
+    collect();const warning=$('.b-announcement-warning');if(warning)warning.hidden=draft.delivery!=='announcement'||state.auth.announcementsAllowed;
+    $('[data-field="color"]').disabled=draft.delivery!=='announcement';
+  }
 }));
 document.addEventListener('submit',e=>{
   e.preventDefault();if(e.target.id!=='command-form')return;
   void guard(async()=>{collect();draft=await call('save',draft);dirty=false;await refresh();renderList();renderEditor();icons();});
 });
 document.addEventListener('click',e=>void guard(async()=>{
-  const tab=e.target.closest('[data-view]');if(tab){collect();view=tab.dataset.view;await refresh();render();return;}
+  const tab=e.target.closest('[data-view]');if(tab){if(view==='autoAnnouncements')await persistTimerDraft();collect();view=tab.dataset.view;await refresh();render();return;}
   const row=e.target.closest('[data-select]');if(row){await choose(row.dataset.select);return;}
   const button=e.target.closest('button');if(!button)return;
   let action=button.dataset.action;
@@ -171,14 +193,14 @@ document.addEventListener('click',e=>void guard(async()=>{
   if(!action)return;
   if(action==='create'){
     if(dirty){toast(t('switchDraft'));return;}
-    const c=await call('create',$('#new-kind')?.value==='choiceExample'?'choice':'target');await refresh();await choose(c.id);return;
+    openTemplates();return;
   }
   if(action==='pause'){state.settings=await call('settings',{...state.settings,paused:!state.settings.paused});renderNav();icons();return;}
   if(action==='delete'){if(confirm(t('confirmDelete'))){await call('remove',selected);dirty=false;await refresh();await choose(state.commands[0]?.id);}return;}
   if(action==='discard'){if(!dirty||confirm(t('confirmDiscard'))){await call('draft',null);dirty=false;await choose(selected);}return;}
   if(['addStep','removeStep','up','down'].includes(action)){
     collect();const index=Number(button.dataset.index);
-    if(action==='addStep'){if(draft.steps.length>=12)return;let n=1;while(draft.steps.some(s=>s.variable==='result'+n))n++;draft.steps.push(stepDefaults('choice','result'+n));}
+    if(action==='addStep'){if(draft.steps.length>=12)return;let n=1;while(draft.steps.some(s=>s.variable==='result'+n))n++;draft.steps.push(stepDefaults(button.dataset.kind||'choice','result'+n));}
     if(action==='removeStep')draft.steps.splice(index,1);
     if(action==='up'||action==='down'){const other=index+(action==='up'?-1:1);[draft.steps[index],draft.steps[other]]=[draft.steps[other],draft.steps[index]];}
     await persistDraft();renderEditor();icons();return;

@@ -12,20 +12,19 @@ async function act(action){await page.locator(`[data-action="${action}"]`).first
 async function save(){await page.locator('button[type=submit]').click();await page.waitForFunction(()=>document.querySelector('#save-status')?.textContent==='Сохранено');}
 (async()=>{
  try{
-  await launch();await act('create');await page.locator('[data-field=trigger]').waitFor();
-  assert.equal(await page.locator('[data-field=enabled]').isChecked(),false);
+  await launch();await act('create');await page.locator('[data-action=createTemplate][data-kind=target]').click();await page.locator('[data-field=trigger]').waitFor();
+  assert.equal(await page.locator('[data-action=toggleCommand]').getAttribute('aria-checked'),'false');
   assert.equal(await page.locator('.command-state').textContent(),'Выключена');
   assert.match(await page.locator('#activity').textContent(),/0 \/ 1/);
-  await page.locator('[data-field=enabled]').check();
-  await save();
+  await act('toggleCommand');
+  await page.waitForFunction(()=>document.querySelector('[data-action=toggleCommand]')?.getAttribute('aria-checked')==='true');
   assert.equal(await page.locator('.command-state').textContent(),'Включена');
   assert.match(await page.locator('#activity').textContent(),/1 \/ 1/);
   await act('pause');assert.equal(await page.locator('#activity').textContent(),'Команды на паузе');
   await act('pause');assert.match(await page.locator('#activity').textContent(),/1 \/ 1/);
   assert.equal(await page.locator('[data-prop=pool]').count(),0);
   assert.equal(await page.locator('input[readonly]').inputValue(),'Подключённые к чату Twitch');
-  await act('addStep');
-  await page.locator('[data-step="1"] [data-prop=type]').selectOption('number');
+  await page.locator('[data-action=addStep][data-kind=number]').click();
   await page.locator('[data-step="1"] [data-prop=variable]').fill('amount');
   await page.locator('[data-step="1"] [data-prop=min]').fill('7');
   await page.locator('[data-step="1"] [data-prop=max]').fill('7');
@@ -42,7 +41,7 @@ async function save(){await page.locator('button[type=submit]').click();await pa
     assert.equal(await page.locator('[data-field=responses]').inputValue(),'{user} кусает {target} {amount} раз!');
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   }
-  await page.locator('#new-kind').selectOption('choiceExample');await act('create');
+  await act('create');await page.locator('[data-action=createTemplate][data-kind=choice]').click();
   await page.locator('[data-prop=choices]').fill('мастер побед\nлегенда чата\nлюбитель приключений');
   await save();await act('test');
   await page.screenshot({path:path.join(root,'docs/screenshots/random-reply.png')});
@@ -77,6 +76,54 @@ async function save(){await page.locator('button[type=submit]').click();await pa
   await page.screenshot({path:path.join(out,'online-permission.png')});
   await page.locator('#audience-notice button').click();
   await page.locator('#auth-controls').waitFor();
+  await page.locator('[data-view=commands]').click();
+  await act('examples');await act('addExamples');
+  await page.waitForFunction(()=>document.querySelectorAll('.command-row').length===12);
+  await act('examples');await act('addExamples');
+  assert.equal(await page.locator('.command-row').count(),12);
+  const seeded=await page.evaluate(()=>window.desk.state());
+  assert.equal(seeded.value.commands.filter(c=>c.enabled).length,1);
+  const tooltip=page.locator('[data-step="0"] [data-help]').first();
+  await tooltip.hover();await page.locator('#builder-tooltip').waitFor();
+  assert.equal(await page.locator('#builder-tooltip').evaluate(el=>{
+    const r=el.getBoundingClientRect();return el.parentElement===document.body&&r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight;
+  }),true);
+  await page.screenshot({path:path.join(out,'tooltip-compact.png')});
+  await page.mouse.move(2,2);
+  await page.locator('[data-view=autoAnnouncements]').click();
+  await act('newTimer');
+  const form=page.locator('[data-timer]').last();
+  await form.locator('[data-field=name]').fill('Затишок');
+  await form.locator('[data-field=text]').fill('Будьте добры друг к другу.');
+  await form.locator('[data-field=minMessages]').fill('0');
+  await form.locator('[data-field=intervalMinutes]').fill('12');
+  await form.locator('button[type=submit]').click();
+  await page.waitForFunction(()=>!!document.querySelector('[data-timer]')?.dataset.timer);
+  await form.locator('[data-action=toggleTimer]').click();
+  await page.waitForFunction(()=>document.querySelector('[data-action=toggleTimer]')?.getAttribute('aria-checked')==='true');
+  for(const lang of ['uk','en','ru']){
+    await page.locator('#language').selectOption(lang);await page.waitForFunction(l=>document.documentElement.lang===l,lang);
+    assert.equal(await page.locator('[data-timer] [data-field=text]').inputValue(),'Будьте добры друг к другу.');
+    assert.equal(await page.locator('[data-timer] [data-field=minMessages]').inputValue(),'0');
+  }
+  await page.setViewportSize({width:1400,height:850});
+  await page.screenshot({path:path.join(root,'docs/screenshots/announcements.png')});
+  const final=await page.evaluate(()=>window.desk.state());
+  assert.equal(final.value.announcements[0].enabled,true);assert.equal(final.value.announcements[0].minMessages,0);
+  assert.equal(final.value.announcementSettings.intervalMinutes,10);assert.equal(final.value.announcementSettings.onlyLive,true);
+  assert.equal(final.value.connection,'offline');assert.equal(final.value.history.length,0);
+  await page.locator('[data-timer] [data-field=text]').fill('');
+  await page.locator('[data-timer] [data-action=toggleTimer]').click();
+  await page.waitForFunction(()=>document.querySelector('[data-action=toggleTimer]')?.getAttribute('aria-checked')==='false');
+  const incomplete=await page.evaluate(()=>window.desk.state());
+  assert.equal(incomplete.value.announcements[0].text,'Будьте добры друг к другу.');
+  assert.equal(incomplete.value.announcements[0].enabled,false);
+  assert.equal(incomplete.value.timerDraft.timers[0].text,'');
+  await app.close();app=null;await launch();await page.locator('[data-view=autoAnnouncements]').click();
+  assert.equal(await page.locator('[data-timer] [data-field=text]').inputValue(),'');
+  await page.locator('[data-timer] [data-field=text]').fill('Будьте добры друг к другу.');
+  await page.locator('[data-timer] button[type=submit]').click();
+  await page.waitForFunction(async()=>!(await window.desk.state()).value.timerDraft);
   assert.deepEqual(errors,[]);console.log('UI verified: workflows, 3 languages, 2 themes, draft recovery, fixed header, compact layout.');
  }finally{
   if(app)await app.close();

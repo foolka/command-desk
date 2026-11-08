@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.1
+
+- First public release: installer and portable ZIP, three languages and two themes.
+- New profiles start with ten disabled example commands and a disabled command-list auto announcement.
+- Timed announcements resolve `{commands}` to the enabled public command list; empty or oversized results are skipped.
+- Existing profiles, command text, enabled states, history and Twitch authorization are preserved on update. Deleted examples never reappear automatically.
+- Compatible with Launch Desk OBS 0.3.0 automatic discovery and normal/tray launch.
+
+## 0.3.0 - 2026-11-08
+
+- Clear template picker, three-stage visual builder and a large immediate command switch.
+- One-random-reply mode (up to 100 variants), clickable variables and ten disabled examples covering all step types and information announcements.
+- Twitch announcements and editable auto-announcement blocks: global and per-block time/message gates, live-only default, fair rotation, persistent duplicate protection and no catch-up after restart.
+- New sign-in requests `moderator:manage:announcements`; existing ordinary commands remain available without reauthorizing.
+- Viewport-clamped tooltips outside scroll containers; Russian, Ukrainian and English UI/docs and updated screenshots.
+- Existing IDs, texts, enabled states, history, profile and sign-in preserved. Examples append disabled without replacing existing triggers.
+
 ## 0.2.1
 
 - Added an explicit Windows taskbar pin button and live status in the standalone app settings, in RU/UK/EN. Windows asks for confirmation; unsupported systems show manual instructions.

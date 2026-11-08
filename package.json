@@ -1,7 +1,7 @@
 {
   "name": "command-desk",
   "productName": "Command Desk",
-  "version": "0.2.1",
+  "version": "0.3.1",
   "private": true,
   "description": "Editable Twitch chat command workflows for streamers",
   "author": "FermionaPlay",

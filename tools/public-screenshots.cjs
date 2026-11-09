@@ -26,7 +26,8 @@ const root=path.resolve(__dirname,'..');
 			assert.equal(await page.locator('[data-action=toggleTimer]').getAttribute('aria-checked'),'false');
 			await page.screenshot({path:path.join(folder,'announcements.png')});
 			await page.locator('#nav [data-view=connection]').click();await page.screenshot({path:path.join(folder,'connection.png')});
+			await page.locator('[data-view=protection]').click();await page.screenshot({path:path.join(folder,'protection.png')});
 		}finally{await app?.close();fs.rmSync(profile,{recursive:true,force:true});}
 	}
-	console.log('Public screenshots: 12 localized images; ten disabled defaults and one disabled timer verified.');
+	console.log('Public screenshots: 15 localized images; ten disabled defaults and one disabled timer verified.');
 })().catch(e=>{console.error(e);process.exitCode=1;});

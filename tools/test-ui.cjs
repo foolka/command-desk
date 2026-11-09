@@ -31,7 +31,7 @@ async function save(){await page.locator('button[type=submit]').click();await pa
   await page.locator('[data-field=responses]').fill('{user} кусает {target} {amount} раз!');
   await save();
   await page.locator('#test-message').fill('!кусь @ViewerTwo');await act('test');
-  await page.waitForFunction(()=>document.querySelector('#test-result')?.textContent.includes('ViewerOne кусает ViewerTwo 7 раз!'));
+  await page.waitForFunction(()=>document.querySelector('#test-result')?.textContent.includes('@ViewerOne кусает @ViewerTwo 7 раз!'));
   assert.equal(await page.locator('[data-prop=pool]').count(),0);
   await page.screenshot({path:path.join(root,'docs/screenshots/editor-light.png')});
   await page.locator('#theme').click();await page.screenshot({path:path.join(root,'docs/screenshots/editor-dark.png')});
@@ -155,7 +155,7 @@ async function save(){await page.locator('button[type=submit]').click();await pa
   const amount=Number(result.trace.find(step=>step.variable==='amount').value);
   const choice=result.trace.find(step=>step.variable==='choice').value;
   assert.equal(choice,amount<=33?'Низкий результат':amount<=67?'Средний результат':'Высокий результат');
-  assert.equal(result.messages[0],`ViewerOne ${amount}: ${amount<=50?'мало':'много'}`);
+  assert.equal(result.messages[0],`@ViewerOne ${amount}: ${amount<=50?'мало':'много'}`);
   await page.setViewportSize({width:1400,height:850});
   await page.screenshot({path:path.join(out,'ordered-replies.png')});
   const changed=await page.evaluate(()=>window.desk.state());const last=changed.value.commands.at(-1);

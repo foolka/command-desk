@@ -64,6 +64,36 @@ class Store{
   setMeta(key,value){this.db.prepare('INSERT INTO meta VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key,JSON.stringify(value));}
   settings(){return settings(this.meta('settings',{}));}
   saveSettings(value){this.setMeta('settings',settings(value));}
+  // Read the old single draft without migrating or discarding it on startup.
+  drafts(){
+    const drafts=this.meta('commandDrafts',{}),current=this.meta('draft');
+    if(current?.id)drafts[current.id]=current;
+    return drafts;
+  }
+  // Keep the active editor and all parked drafts in one transaction.
+  writeDrafts(drafts,current,selected=this.meta('selectedCommand')){
+    this.db.exec('BEGIN IMMEDIATE');
+    try{
+      this.setMeta('commandDrafts',drafts);this.setMeta('draft',current);this.setMeta('selectedCommand',selected);
+      this.db.exec('COMMIT');
+    }catch(error){this.db.exec('ROLLBACK');throw error;}
+  }
+  saveDraft(input){
+    if(input===null){this.clearDraft(this.meta('draft')?.id);return;}
+    if(!input||typeof input!=='object'||Array.isArray(input)||!this.commands().some(c=>c.id===input.id))throw Error('notFound');
+    if(JSON.stringify(input).length>600000)throw Error('tooLong');
+    const drafts=this.drafts();drafts[input.id]=input;
+    this.writeDrafts(drafts,input,input.id);
+  }
+  selectDraft(id){
+    if(!this.commands().some(c=>c.id===id))throw Error('notFound');
+    const drafts=this.drafts();this.writeDrafts(drafts,drafts[id]||null,id);
+  }
+  clearDraft(id){
+    if(!id)return;
+    const drafts=this.drafts(),current=this.meta('draft');delete drafts[id];
+    this.writeDrafts(drafts,current?.id===id?null:current);
+  }
   commands(){
     const commands=this.db.prepare('SELECT data FROM commands ORDER BY rowid').all().map(r=>JSON.parse(r.data));
     const order=new Map(this.meta('commandOrder',[]).map((id,index)=>[id,index]));
@@ -84,7 +114,7 @@ class Store{
   backup(){
     const folder=path.join(this.root,'backups');fs.mkdirSync(folder,{recursive:true});
     const file=path.join(folder,`${this.now()}-${randomUUID()}.json`);
-    atomic(file,JSON.stringify({version:1,commands:this.commands(),commandOrder:this.meta('commandOrder',[]),settings:this.settings(),announcements:this.meta('announcements',[]),announcementSettings:this.meta('announcementSettings'),draft:this.meta('draft'),timerDraft:this.meta('timerDraft')},null,2));
+    atomic(file,JSON.stringify({version:1,commands:this.commands(),commandOrder:this.meta('commandOrder',[]),settings:this.settings(),announcements:this.meta('announcements',[]),announcementSettings:this.meta('announcementSettings'),draft:this.meta('draft'),commandDrafts:this.drafts(),selectedCommand:this.meta('selectedCommand'),timerDraft:this.meta('timerDraft')},null,2));
     const files=fs.readdirSync(folder).filter(n=>/^\d+-[a-f0-9-]+\.json$/.test(n)).sort();
     for(const old of files.slice(0,-20))fs.unlinkSync(path.join(folder,old));
   }
@@ -94,12 +124,13 @@ class Store{
     this.db.prepare('INSERT INTO commands VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data').run(c.id,JSON.stringify(c));
     return c;
   }
-  remove(id){if(!this.commands().some(c=>c.id===id))throw Error('notFound');this.backup();this.db.prepare('DELETE FROM commands WHERE id=?').run(id);}
+  remove(id){if(!this.commands().some(c=>c.id===id))throw Error('notFound');this.backup();this.db.prepare('DELETE FROM commands WHERE id=?').run(id);this.clearDraft(id);if(this.meta('selectedCommand')===id)this.setMeta('selectedCommand',null);}
   setEnabled({id,enabled}){
     const command=this.commands().find(c=>c.id===id);if(!command)throw Error('notFound');
     this.backup();command.enabled=!!enabled;
     this.db.prepare('UPDATE commands SET data=? WHERE id=?').run(JSON.stringify(command),id);
-    const draft=this.meta('draft');if(draft?.id===id)this.setMeta('draft',{...draft,enabled:!!enabled});
+    const drafts=this.drafts(),current=this.meta('draft');
+    if(drafts[id]){drafts[id]={...drafts[id],enabled:!!enabled};this.writeDrafts(drafts,current?.id===id?drafts[id]:current);}
     return command;
   }
   addExamples(language=this.settings().language){

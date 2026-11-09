@@ -86,7 +86,7 @@ test('Thirty replies from ten viewers drain with rate limits and no old 20s expi
 	}
 	assert.equal(calls.length,30);assert.ok(!f.logs.some(row=>['expired','queueFull','cooldownActive'].includes(row.code)));
 	for(const call of calls)assert.ok(calls.filter(other=>other.at<=call.at&&other.at>call.at-30000).length<=20);
-	assert.deepEqual(calls.map(call=>call.message),Array.from({length:10},(_,i)=>[1,2,3].map(n=>`Viewer${i} ${n}`)).flat());
+	assert.deepEqual(calls.map(call=>call.message),Array.from({length:10},(_,i)=>[1,2,3].map(n=>`@Viewer${i} ${n}`)).flat());
 });
 test('Manual command list is not suppressed by an automatic announcement with the same text',async t=>{
 	const f=fixture(t);f.command.delivery='announcement';f.command.responses=['Available commands'];

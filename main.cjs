@@ -18,13 +18,13 @@ function secretSave(name,value){
   atomic(path.join(root,name),safeStorage.encryptString(JSON.stringify(value)));
 }
 function secretLoad(name){const file=path.join(root,name);if(!fs.existsSync(file))return null;try{return JSON.parse(safeStorage.decryptString(fs.readFileSync(file)));}catch{throw Error('secureStorage');}}
-function state(){return {version:app.getVersion(),settings:store.settings(),commands:store.commands(),draft:store.meta('draft'),history:store.history(),
+function state(){return {version:app.getVersion(),settings:store.settings(),commands:store.commands(),draft:store.meta('draft'),drafts:store.drafts(),selectedCommand:store.meta('selectedCommand'),history:store.history(),
   announcements:store.meta('announcements',[]),announcementSettings:twitch.announcements.settings(),timerDraft:store.meta('timerDraft'),live:twitch.live,
   auth:{...auth.view(),message:undefined},connection:twitch.status,
   audience:twitch.engine.audience.candidates(new Set([...BOTS,...store.settings().excluded,auth.saved?.user.login||'']),'',true),
   audienceStatus:twitch.engine.audience.status(),audienceUpdatedAt:twitch.engine.audience.updatedAt,
   queue:twitch.queue.length,dataPath:root,test};}
-function show(){if(win&&!win.isDestroyed()){win.show();if(win.isMinimized())win.restore();win.focus();}}
+function show(){if(win&&!win.isDestroyed()){win.show();if(win.isMinimized())win.restore();win.focus();win.webContents.focus();}}
 function theme(){nativeTheme.themeSource=store.settings().theme;win?.setBackgroundColor(store.settings().theme==='dark'?'#191c20':'#f5f7f8');}
 app.on('second-instance',show);
 app.whenReady().then(async()=>{
@@ -34,15 +34,17 @@ app.whenReady().then(async()=>{
   twitch=new Twitch({auth,store,test});
   win=new BrowserWindow({width:1400,height:920,minWidth:940,minHeight:680,title:'Command Desk',icon:path.join(__dirname,'assets/icon.ico'),show:false,autoHideMenuBar:true,
     webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
+  win.on('focus',()=>win.webContents.focus());
   win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
   require('./core/taskbar.cjs').attachTaskbar({app,shell,ipcMain,win,test,name:'Command Desk',appId:'com.fermionaplay.commanddesk'});
   win.webContents.on('will-navigate',(e,url)=>{if(url!==uiUrl)e.preventDefault();});
   win.webContents.session.setPermissionRequestHandler((_,__,cb)=>cb(false));
   const actions={
     state:()=>state(),
-    save:input=>{const result=store.save(input);store.setMeta('draft',null);return result;},
+    save:input=>{const result=store.save(input);store.clearDraft(result.id);return result;},
     reorder:ids=>store.reorder(ids),
-    draft:input=>{if(input&&JSON.stringify(input).length>600000)throw Error('tooLong');store.setMeta('draft',input);},
+    draft:input=>store.saveDraft(input),
+    selectCommand:id=>{store.selectDraft(id);return state();},
     create:kind=>{const c=(examples(store.settings().language).find(e=>e.key===kind)||examples(store.settings().language)[0]).command;c.enabled=false;const base=c.trigger;let n=2;while(store.commands().some(x=>[x.trigger,...x.aliases].includes(c.trigger)))c.trigger=base+n++;return store.save(c);},
     examples:()=>store.addExamples(),
     enabled:input=>{const c=store.setEnabled(input);if(!c.enabled)twitch.queue=twitch.queue.filter(item=>item.command!==c.trigger);return c;},
@@ -57,7 +59,7 @@ app.whenReady().then(async()=>{
     },
     removeTimer:id=>store.removeTimer(id),
     announcementSettings:input=>store.saveAnnouncementSettings(input),
-    remove:id=>{store.remove(id);if(store.meta('draft')?.id===id)store.setMeta('draft',null);},
+    remove:id=>store.remove(id),
     settings:input=>{store.saveSettings(input);if(input.paused)twitch.queue=[];theme();return store.settings();},
     preview:({command,message,user,names})=>{
       if(typeof message!=='string'||message.length>1000||typeof user!=='string'||user.length>25||!Array.isArray(names)||names.length>100)throw Error('invalidPreview');

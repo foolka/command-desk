@@ -1,7 +1,16 @@
 const {randomInt}=require('node:crypto');
 const {BASE,BOTS,normalize,settings}=require('./model.cjs');
 const {SpamGuard}=require('./spam.cjs');
-const fill=(text,values)=>text.replace(/\{([a-z][a-z0-9_]*)\}/g,(_,key)=>values[key]??'');
+// Existing templates may already prefix a participant variable with @.
+const fill=(text,values)=>text.replace(/(@*)\{([a-z][a-z0-9_]*)\}/g,(_,prefix,key)=>{
+  const value=String(values[key]??'');return prefix&&value.startsWith('@')?value:prefix+value;
+});
+// A localized display name may not be a usable Twitch login.
+function mention(login,name=login){
+  const nick=String(login??'').replace(/^@+/,''),display=String(name??'');
+  if(!/^[a-z0-9_]{1,25}$/i.test(nick))return display||nick;
+  return '@'+(display.toLowerCase()===nick.toLowerCase()?display:nick);
+}
 const output=text=>{
   const message=String(text).replace(/[\r\n\x00-\x1f\x7f]/g,' ').trim();
   if(Array.from(message).length>500)throw Error('messageTooLong');
@@ -36,7 +45,7 @@ function scaledChoice(choices,value,step){
 }
 function evaluate(command,event,audience,config={},rng=randomInt) {
   const parts=event.text.trim().split(/\s+/u);
-  const values=Object.assign(Object.create(null),{user:event.name||event.login,login:event.login,channel:event.channel||'',args:parts.slice(1).join(' '),arg1:parts[1]||'',command:parts[0],commands:config.commandList||''});
+  const values=Object.assign(Object.create(null),{user:mention(event.login,event.name),login:event.login,channel:event.channel||'',args:parts.slice(1).join(' '),arg1:parts[1]||'',command:parts[0],commands:config.commandList||''});
   const excluded=new Set([...BOTS,...(config.excluded||[]),event.channel||''].map(s=>s.toLowerCase()));
   const trace=[],numbers=new Map();
   for(const s of command.steps) {
@@ -47,12 +56,13 @@ function evaluate(command,event,audience,config={},rng=randomInt) {
       else if(explicit) {
         const nick=values.arg1.replace(/^@/,'');
         if(!/^[a-z0-9_]{1,25}$/i.test(nick))return {messages:command.invalidTargetText?[output(fill(command.invalidTargetText,values))]:[],trace,reason:'invalidTarget'};
-        value=nick;
+        value=mention(nick);
       }else{
         if(audience.status()!=='onlineReady')return {messages:[],trace,reason:audience.status()};
         const candidates=audience.candidates(excluded,event.userId,s.allowSelf);
         if(!candidates.length)return {messages:command.noTargetText?[output(fill(command.noTargetText,values))]:[],trace,reason:'noTarget'};
-        value=candidates[rng(candidates.length)].name;
+        const participant=candidates[rng(candidates.length)];
+        value=mention(participant.login,participant.name);
       }
     }else if(s.type==='choice'){
       const mode=s.selectionMode||(numbers.has('amount')?'number':'random');

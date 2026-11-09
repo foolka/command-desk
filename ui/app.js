@@ -1,12 +1,13 @@
 let state,selected=null,draft=null,dirty=false,view='commands',query='',testValues={user:'ViewerOne',message:'',names:'ViewerTwo\nViewerThree\nViewerFour'},testResult=null;
+let selectingCommand=false,draftWrite=Promise.resolve();
 const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const t=key=>dictionaries[state?.settings.language||'ru'][key]||dictionaries.en[key]||dictionaries.en.operationFailed;
 const icon=name=>`<i data-lucide="${name}"></i>`;
 const iconButton=(action,name,label,extra='')=>`<button type="button" class="icon" data-action="${action}" title="${esc(t(label))}" aria-label="${esc(t(label))}" ${extra}>${icon(name)}</button>`;
 const help=key=>`<span class="help" tabindex="0" role="note" data-help="${esc(t(key))}" aria-label="${esc(t(key))}">${icon('circle-help')}</span>`;
 const label=(key,content,tip='')=>`<label><span>${esc(t(key))}${tip?help(tip):''}</span>${content}</label>`;
-const input=(field,value,type='text',extra='')=>`<input data-field="${field}" type="${type}" value="${esc(value)}" ${extra}>`;
-const textarea=(field,value,rows=3)=>`<textarea data-field="${field}" rows="${rows}">${esc(Array.isArray(value)?value.join('\n'):value)}</textarea>`;
+const input=(field,value,type='text',extra='')=>`<input class="b-editor-field" data-field="${field}" type="${type}" value="${esc(value)}" ${extra}>`;
+const textarea=(field,value,rows=3)=>`<textarea class="b-editor-field" data-field="${field}" rows="${rows}">${esc(Array.isArray(value)?value.join('\n'):value)}</textarea>`;
 const options=(values,current)=>values.map(v=>`<option value="${v}" ${v===current?'selected':''}>${esc(t(v))}</option>`).join('');
 const select=(field,current,values)=>`<select data-field="${field}">${options(values,current)}</select>`;
 function icons(){lucide.createIcons({attrs:{'stroke-width':1.7}});}
@@ -44,8 +45,8 @@ function renderNav(){
 function renderList(){
   const list=$('#command-list');if(!list)return;
   const matches=state.commands.filter(c=>(c.name+' '+c.trigger).toLowerCase().includes(query.toLowerCase()));
-  list.innerHTML=matches.map(c=>`<button class="command-row b-command-row ${c.id===selected?'selected':''}" data-select="${c.id}" draggable="true"><span class="dot ${c.enabled?'on':''}"></span><span><strong>${esc(c.trigger)}</strong><small>${esc(c.name)}</small><small class="command-state ${c.enabled?'on':''}">${t(c.enabled?'commandOn':'commandOff')}</small></span><span class="b-command-row__grip" title="${t('dragCommand')}">${icon('grip-vertical')}</span></button>`).join('');
-  for(const row of list.children){const color=state.commands.find(c=>c.id===row.dataset.select)?.sidebarColor;if(color)row.style.setProperty('--command-color',color);}
+  list.innerHTML=matches.map(c=>`<button class="command-row b-command-row ${c.id===selected?'selected':''}" data-select="${c.id}" draggable="true"><span class="dot ${c.enabled?'on':''}"></span><span><strong>${esc(c.trigger)}</strong><small>${esc(c.name)}</small><small class="command-state ${c.enabled?'on':''}">${t(c.enabled?'commandOn':'commandOff')}</small>${state.drafts?.[c.id]?`<small class="b-command-row__draft">${t('pendingChanges')}</small>`:''}</span><span class="b-command-row__grip" title="${t('dragCommand')}">${icon('grip-vertical')}</span></button>`).join('');
+  for(const row of list.children)updateCommandColor(row,state.commands.find(c=>c.id===row.dataset.select));
   icons();
   $('#command-count').textContent=state.commands.length;
 }
@@ -82,7 +83,7 @@ function renderEditor(){
       <div class="steps">${draft.steps.map(renderStep).join('')||`<div class="notice">${t('noSteps')}</div>`}</div>
       <div class="b-steps-add">${['target','choice','number','text'].map((kind,i)=>`<button type="button" class="b-action" data-action="addStep" data-kind="${kind}">${icon(['user-round','shuffle','dices','text-cursor-input'][i])}${t(kind)}</button>`).join('')}</div></section>
     <section><h3 class="b-stage"><span class="b-stage__number">3</span>${t('send')}</h3>
-      <div class="grid two">${label('delivery',select('delivery',draft.delivery||'message',['message','announcement']))}${label('color',select('color',draft.color||'primary',['primary','blue','green','orange','purple']).replace('data-field="color"',`data-field="color" ${draft.delivery==='announcement'?'':'disabled'}`))}</div>
+      <div class="grid two">${renderDelivery()}${label('color',select('color',draft.color||'primary',['primary','blue','green','orange','purple']).replace('data-field="color"',`data-field="color" ${draft.delivery==='announcement'?'':'disabled'}`))}</div>
       <div class="b-announcement-warning" ${draft.delivery==='announcement'&&!state.auth.announcementsAllowed?'':'hidden'}>${t('announcementPermission')} <button type="button" data-view="connection">${t('connection')}</button></div>
       <div class="b-segment" role="group" aria-label="${t('responseMode')}">${['all','random','number'].map(mode=>`<button type="button" class="b-segment__button" data-action="replyMode" data-mode="${mode}" ${mode==='number'&&!draft.steps.some(s=>s.type==='number')?'disabled':''} aria-pressed="${(draft.responseMode||'all')===mode}">${icon(mode==='random'?'shuffle':mode==='number'?'chart-no-axes-combined':'list')}${t(mode==='random'?'randomReply':mode==='number'?'byNumber':'all')}</button>`).join('')}</div>
       ${draft.responseMode==='number'?label('numberSource',numberSource('responseVariable',draft.responseVariable||'amount',draft.steps),'orderedHelp'):''}
@@ -122,8 +123,13 @@ function collect(){
   });
 }
 async function persistDraft(){
-  dirty=true;const value=structuredClone(draft);await call('draft',value);
-  if($('#save-status'))$('#save-status').textContent=t('draft');
+  dirty=true;const value=structuredClone(draft);
+  state.drafts??={};state.drafts[value.id]=value;
+  const row=[...document.querySelectorAll('[data-select]')].find(row=>row.dataset.select===value.id);
+  if(row)updateCommandColor(row,value);
+  // Serialize writes so a late keystroke cannot restore the previous editor after switching.
+  draftWrite=draftWrite.catch(()=>{}).then(()=>call('draft',value));await draftWrite;
+  if(selected===value.id&&$('#save-status'))$('#save-status').textContent=t('draft');
 }
 function stepDefaults(type,variable){return {type,variable,mode:'argument_or_random',pool:'online',allowSelf:false,choices:[''],min:1,max:100,text:''};}
 function renderSimulation(){
@@ -163,11 +169,21 @@ async function refresh(){
   if(view==='history'||view==='audience'){const scroll=$('.page-scroll')?.scrollTop||0;renderTable();$('.page-scroll').scrollTop=scroll;icons();}
 }
 async function choose(id){
-  if(dirty&&id!==selected){toast(t('switchDraft'));return;}
-  selected=id;draft=structuredClone(state.commands.find(c=>c.id===id)||null);dirty=false;testValues.message=draft?.trigger||'';testResult=null;render();
+  if(selectingCommand)return;
+  if(id===selected&&dirty)return;
+  selectingCommand=true;
+  const editor=$('#editor');if(editor)editor.inert=true;
+  try{
+    collect();if(dirty)await persistDraft();else await draftWrite;
+    if(id)state=await call('selectCommand',id);else await refresh();
+    selected=id||null;const saved=state.drafts?.[selected];
+    draft=structuredClone(saved||state.commands.find(c=>c.id===selected)||null);dirty=!!saved;
+    testValues.message=draft?.trigger||'';testResult=null;render();
+  }finally{selectingCommand=false;if(editor?.isConnected)editor.inert=false;}
 }
 document.addEventListener('input',e=>{
   if(e.target.id==='search'){query=e.target.value;renderList();return;}
+  if(e.target.matches('[data-sidebar-color]'))$('[data-field=sidebarColor]').value=e.target.value;
   if(e.target.closest('#command-form')){collect();void guard(persistDraft);}
   if(e.target.id==='test-user')testValues.user=e.target.value;
   if(e.target.id==='test-message')testValues.message=e.target.value;
@@ -182,14 +198,10 @@ document.addEventListener('change',e=>void guard(async()=>{
     if(view==='autoAnnouncements')await persistTimerDraft();
     collect();state.settings=await call('settings',{...state.settings,language:e.target.value});render();
   }
-  if(e.target.dataset.field==='delivery'){
-    collect();const warning=$('.b-announcement-warning');if(warning)warning.hidden=draft.delivery!=='announcement'||state.auth.announcementsAllowed;
-    $('[data-field="color"]').disabled=draft.delivery!=='announcement';
-  }
 }));
 document.addEventListener('submit',e=>{
-  e.preventDefault();if(e.target.id!=='command-form')return;
-  void guard(async()=>{collect();draft=await call('save',draft);dirty=false;await refresh();renderList();renderEditor();icons();});
+  if(e.target.id!=='command-form')return;e.preventDefault();
+  void guard(async()=>{collect();await draftWrite;draft=await call('save',draft);dirty=false;await refresh();renderList();renderEditor();icons();});
 });
 document.addEventListener('click',e=>void guard(async()=>{
   const tab=e.target.closest('[data-view]');if(tab){if(view==='autoAnnouncements')await persistTimerDraft();collect();view=tab.dataset.view;await refresh();render();return;}
@@ -200,12 +212,12 @@ document.addEventListener('click',e=>void guard(async()=>{
   if(button.id==='tray'){await call('tray');return;}
   if(!action)return;
   if(action==='create'){
-    if(dirty){toast(t('switchDraft'));return;}
+    collect();if(dirty)await persistDraft();
     openTemplates();return;
   }
   if(action==='pause'){state.settings=await call('settings',{...state.settings,paused:!state.settings.paused});renderNav();icons();return;}
-  if(action==='delete'){if(confirm(t('confirmDelete'))){await call('remove',selected);dirty=false;await refresh();await choose(state.commands[0]?.id);}return;}
-  if(action==='discard'){if(!dirty||confirm(t('confirmDiscard'))){await call('draft',null);dirty=false;await choose(selected);}return;}
+  if(action==='delete'){if(await confirmAction('confirmDelete','delete')){await draftWrite;await call('remove',selected);dirty=false;await refresh();await choose(state.commands[0]?.id);}return;}
+  if(action==='discard'){if(!dirty||await confirmAction('confirmDiscard','discard')){await draftWrite;await call('draft',null);dirty=false;await choose(selected);}return;}
   if(['addStep','removeStep','up','down'].includes(action)){
     collect();const index=Number(button.dataset.index);
     if(action==='addStep'){if(draft.steps.length>=12)return;let n=1;while(draft.steps.some(s=>s.variable==='result'+n))n++;draft.steps.push(stepDefaults(button.dataset.kind||'choice','result'+n));}
@@ -215,12 +227,12 @@ document.addEventListener('click',e=>void guard(async()=>{
   }
   if(action==='test'){collect();testResult=await call('preview',{command:draft,user:testValues.user,message:$('#test-message').value,names:testValues.names.split('\n').map(s=>s.trim()).filter(Boolean)});$('#test-result').innerHTML=renderResult();return;}
   if(action==='saveExcluded'){state.settings=await call('settings',{...state.settings,excluded:$('#excluded').value});toast(t('saved'));return;}
-  if(action==='clearHistory'&&!confirm(t('confirmClear')))return;
+  if(action==='clearHistory'&&!await confirmAction('confirmClear','clearHistory'))return;
   if(['import','export','login','logout','openLogin','cancelLogin','clearHistory','openProfile','backup'].includes(action)){
-    if(action==='import'&&dirty){toast(t('switchDraft'));return;}
+    if(action==='import'&&dirty){collect();await persistDraft();}
     await call(action);await refresh();
     if(['import','clearHistory','logout'].includes(action))render();
     if(action==='backup')toast(t('saved'));
   }
 }));
-void guard(async()=>{state=await call('state');draft=state.draft;dirty=!!draft;selected=draft?.id||state.commands[0]?.id||null;draft=draft||structuredClone(state.commands.find(c=>c.id===selected)||null);render();setInterval(()=>void guard(refresh),3000);});
+void guard(async()=>{state=await call('state');selected=state.draft?.id||state.selectedCommand||state.commands[0]?.id||null;draft=structuredClone(state.drafts?.[selected]||state.draft||null);dirty=!!draft;draft=draft||structuredClone(state.commands.find(c=>c.id===selected)||null);render();setInterval(()=>void guard(refresh),3000);});

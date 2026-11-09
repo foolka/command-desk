@@ -15,8 +15,10 @@ async function launch(){app=await electron.launch({executablePath:path.join(fold
   const id=JSON.parse(fs.readFileSync(path.join(profile,'profile-identity.json'),'utf8')).id;
   await app.close();app=null;page=await launch();
   s=await page.evaluate(()=>window.desk.state());assert.equal(s.value.commands.length,1);
+  const preview=await page.evaluate(command=>window.desk.preview({command,user:'ViewerOne',message:command.trigger+' @ViewerTwo',names:['ViewerTwo']}),s.value.commands[0]);
+  assert.equal(preview.ok,true);assert.ok(preview.value.messages[0].includes('@ViewerOne'));assert.ok(preview.value.messages[0].includes('@ViewerTwo'));
   assert.equal(JSON.parse(fs.readFileSync(path.join(profile,'profile-identity.json'),'utf8')).id,id);
   assert.equal(s.value.connection,'offline');assert.equal(s.value.auth.user,null);
-  console.log('Packaged EXE verified: isolated profile, no packaged personal data, command and identity survive restart.');
+  console.log('Packaged EXE verified: isolated profile, no packaged personal data, command and identity survive restart, preview mentions both participants.');
  }finally{if(app)await app.close();assert.ok(path.resolve(profile).startsWith(path.resolve(os.tmpdir())+path.sep+'command-desk-package-'));fs.rmSync(profile,{recursive:true,force:true});}
 })().catch(e=>{console.error(e);process.exitCode=1;});

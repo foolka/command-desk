@@ -2,7 +2,7 @@
 
 [Русский](../README.md) · [Українська](README.uk.md)
 
-Public release **0.4.0**. A local Windows Twitch command builder that replies as the broadcaster. No separate bot account, Streamer.bot or hosted backend is required.
+Public release **0.4.3**. A local Windows Twitch command builder that replies as the broadcaster. No separate bot account, Streamer.bot or hosted backend is required.
 
 Fresh profiles include **10 editable commands and a command-list auto announcement**, all disabled until you choose to enable them. Updates never overwrite existing commands or restore deleted examples. [Launch Desk OBS](https://github.com/foolka/launch-desk-obs) 0.3.0+ can start the app normally or in the tray with OBS. Timed messages support `{commands}` for currently enabled commands available to everyone; empty or over-500-character results are skipped.
 
@@ -10,6 +10,8 @@ Fresh profiles include **10 editable commands and a command-list auto announceme
 
 ## Features
 
+- Direct Chat message / Twitch announcement buttons, a visible caret and reliable editor focus after tray restore. `{user}` and target steps produce @mentions for every participant; `{login}` stays raw for links.
+- Reorder commands and assign always-visible color stripes. Independent incomplete drafts do not block switching commands and survive restarting without applying edits to live chat.
 - Editable commands and aliases, including Cyrillic.
 - Up to 12 ordered steps: participant selection, a random line, an integer, or intermediate text.
 - A clear template picker, three-stage builder, immediate enable switch, clickable variables and viewport-safe tooltips.

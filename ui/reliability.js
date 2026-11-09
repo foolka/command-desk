@@ -1,5 +1,7 @@
 const reliabilityCopy = {
 	ru: {
+		cancelAction:'Отмена',
+		pendingChanges:'Есть черновик',
 		sidebarColor:'Цвет боковой полосы',clearSidebarColor:'Сбросить цвет полосы',dragCommand:'Перетащить команду',moveCommandUp:'Поднять команду в списке',moveCommandDown:'Опустить команду в списке',invalidOrder:'Список команд изменился. Обнови его и повтори перемещение.',invalidColor:'Выбери цвет полосы.',
 		protection:'Защита',antiSpam:'Защита от повторов одного зрителя',spamRepeats:'Повторов до предупреждения',spamWindowSeconds:'Окно подсчёта, сек.',spamFirstBlockSeconds:'Первая блокировка, сек.',spamRepeatBlockSeconds:'Повторная за эфир, сек.',
 		spamHelp:'Считаются одинаковые команды подряд от одного зрителя, включая псевдонимы и попытки во время его перезарядки. Чужие сообщения не влияют. На пороге отправляется предупреждение без выполнения команды; следующая такая попытка в этом окне блокирует все команды зрителя. Чат Twitch не блокируется. Повторное нарушение усиливает блокировку до конца этого эфира. Перезапуск приложения не сбрасывает наказание.',
@@ -10,6 +12,8 @@ const reliabilityCopy = {
 		responseHelp:'«Все» отправляет до 3 строк. Случайный режим и выбор по числу отправляют одну из максимум 100 строк. В режиме по числу порядок строк соответствует возрастанию результата.',invalidResponses:'Добавь ответ: до 3 строк в режиме «Все», до 100 при выборе одной строки.'
 	},
 	uk: {
+		cancelAction:'Скасувати',
+		pendingChanges:'Є чернетка',
 		sidebarColor:'Колір бічної смуги',clearSidebarColor:'Скинути колір смуги',dragCommand:'Перетягнути команду',moveCommandUp:'Підняти команду у списку',moveCommandDown:'Опустити команду у списку',invalidOrder:'Список команд змінився. Онови його й повтори переміщення.',invalidColor:'Обери колір смуги.',
 		protection:'Захист',antiSpam:'Захист від повторів одного глядача',spamRepeats:'Повторів до попередження',spamWindowSeconds:'Вікно підрахунку, с',spamFirstBlockSeconds:'Перше блокування, с',spamRepeatBlockSeconds:'Повторне за ефір, с',
 		spamHelp:'Рахуються однакові команди поспіль від одного глядача, включно з псевдонімами й спробами під час перезарядки. Чужі повідомлення не впливають. На порозі надсилається попередження без виконання; наступна така спроба в цьому вікні блокує всі команди глядача, але не чат Twitch. Повторне порушення посилює блокування до кінця ефіру. Перезапуск не скидає покарання.',
@@ -20,6 +24,8 @@ const reliabilityCopy = {
 		responseHelp:'«Усі» надсилає до 3 рядків. Випадковий режим та вибір за числом надсилають один із максимум 100 рядків. У режимі за числом порядок рядків відповідає зростанню результату.',invalidResponses:'Додай відповідь: до 3 рядків у режимі «Усі», до 100 для вибору одного.'
 	},
 	en: {
+		cancelAction:'Cancel',
+		pendingChanges:'Draft changes',
 		sidebarColor:'Sidebar stripe color',clearSidebarColor:'Reset stripe color',dragCommand:'Drag command',moveCommandUp:'Move command up',moveCommandDown:'Move command down',invalidOrder:'The command list changed. Refresh and try moving again.',invalidColor:'Choose a stripe color.',
 		protection:'Protection',antiSpam:'Per-viewer repeat protection',spamRepeats:'Repeats before warning',spamWindowSeconds:'Counting window, sec.',spamFirstBlockSeconds:'First block, sec.',spamRepeatBlockSeconds:'Repeat in this stream, sec.',
 		spamHelp:'Counts consecutive uses of the same command by one viewer, including aliases and attempts during a personal cooldown. Other viewers do not affect the count. At the threshold, a warning replaces the reply; the next matching attempt within this window blocks all commands for that viewer, not Twitch chat. Repeated violations escalate for this stream. Restarting the app does not clear penalties.',
@@ -105,11 +111,6 @@ document.addEventListener('drop',event=>{
 	draggedCommandId=null;clearDropMarker();void guard(()=>moveCommand(id,row.dataset.select,after));
 });
 document.addEventListener('dragend',()=>{draggedCommandId=null;clearDropMarker();});
-document.addEventListener('input',event=>{
-	if(!event.target.matches('[data-sidebar-color]'))return;
-	const field=document.querySelector('[data-field=sidebarColor]');field.value=event.target.value;
-	draft.sidebarColor=field.value;
-});
 document.addEventListener('click',event=>{
 	const action=event.target.closest('button')?.dataset.action;
 	if(action==='clearSidebarColor')void guard(async()=>{collect();draft.sidebarColor='';await persistDraft();renderEditor();icons();});

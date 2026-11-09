@@ -66,7 +66,7 @@ test('Real SDK uses broadcaster permission and exposes silent participants corre
  f.twitch.api=api;await f.twitch.refreshAudience();
  assert.deepEqual(f.twitch.engine.audience.users,[{id:'20',login:'silent',name:'Silent'}]);
  const result=f.twitch.engine.receive({id:'message',userId:'30',login:'speaker',name:'Speaker',text:'!кусь',channel:'host'});
- assert.equal(result.messages[0],'Speaker кусает Silent!');
+ assert.equal(result.messages[0],'@Speaker кусает @Silent!');
 });
 test('A timed-out request cannot replace a newer successful snapshot',async t=>{
  t.mock.timers.enable({apis:['setTimeout']});

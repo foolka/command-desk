@@ -125,7 +125,7 @@ document.addEventListener('submit',event=>{
 document.addEventListener('click',event=>void guard(async()=>{
 	const button=event.target.closest('button');if(!button)return;
 	const action=button.dataset.action;
-	if(action==='examples'){if(dirty){toast(t('switchDraft'));return;}openTemplates();}
+	if(action==='examples'){collect();if(dirty)await persistDraft();openTemplates();}
 	if(action==='closeTemplates')button.closest('dialog').close();
 	if(action==='createTemplate'){
 		const command=await call('create',button.dataset.kind);button.closest('dialog').close();await refresh();await choose(command.id);
@@ -154,7 +154,7 @@ document.addEventListener('click',event=>void guard(async()=>{
 		list.lastElementChild.querySelector('[data-field="name"]').focus();timerDirty=true;list.lastElementChild.querySelector('form').dataset.dirty='true';await persistTimerDraft();icons();
 	}
 	if(action==='toggleTimer')await saveTimerForm(button.closest('form'),true);
-	if(action==='removeTimer'&&confirm(t('confirmDelete'))){
+	if(action==='removeTimer'&&await confirmAction('confirmDelete','delete')){
 		const form=button.closest('form');if(form.dataset.timer)await call('removeTimer',form.dataset.timer);form.closest('li').remove();await persistTimerDraft();await refresh();
 	}
 }));

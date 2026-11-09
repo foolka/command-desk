@@ -11,12 +11,12 @@ function online(names=[],now=Date.now){const a=new Audience(now);a.replace(names
 test('Unicode triggers, aliases and all editable templates',()=>{
   const c=normalize({...sample(),trigger:'!КУСЬ',aliases:'!bite !хрусь',responses:['До {user}: {target}, после.']});
   const result=evaluate(c,event('!кусь @Bob'),new Audience());
-  assert.equal(c.trigger,'!кусь');assert.equal(result.messages[0],'До Alice: Bob, после.');
+  assert.equal(c.trigger,'!кусь');assert.equal(result.messages[0],'До @Alice: @Bob, после.');
   assert.equal(fill('{user}',{user:'{target}'}),'{target}');
 });
 test('Steps can combine participant, list, number and intermediate text',()=>{
   const c=normalize({...sample(),steps:[{type:'target',variable:'who',mode:'argument'},{type:'choice',variable:'action',choices:['обнимает','приветствует']},{type:'number',variable:'count',min:2,max:2},{type:'text',variable:'result',text:'{action} {who} {count} раз'}],responses:['{user} {result}']});
-  assert.equal(evaluate(c,event('!кусь Bob'),new Audience(),{},(a,b)=>b===undefined?0:a).messages[0],'Alice обнимает Bob 2 раз');
+  assert.equal(evaluate(c,event('!кусь Bob'),new Audience(),{},(a,b)=>b===undefined?0:a).messages[0],'@Alice обнимает @Bob 2 раз');
 });
 test('Only preceding variables are accepted, no executable expressions',()=>{
   assert.throws(()=>normalize({...sample(),responses:['{process.exit()}']}),/unknownVariable/);
@@ -33,10 +33,10 @@ test('Online snapshots include silent users, deduplicate and remove users who le
 test('Random candidates exclude bots, configured logins, channel and self',()=>{
   const a=online(['Alice','Bob','Nightbot','Hidden','Channel']);
   const result=evaluate(sample(),event(),a,{excluded:['hidden']},()=>0);
-  assert.equal(result.messages[0],'Alice кусает Bob!');
+  assert.equal(result.messages[0],'@Alice кусает @Bob!');
 });
 test('Empty pool and invalid nickname have editable replies or silence',()=>{
-  const c=sample();c.noTargetText='Нет цели для {user}';assert.equal(evaluate(c,event(),online()).messages[0],'Нет цели для Alice');
+  const c=sample();c.noTargetText='Нет цели для {user}';assert.equal(evaluate(c,event(),online()).messages[0],'Нет цели для @Alice');
   c.invalidTargetText='';assert.deepEqual(evaluate(c,event('!кусь bad/nick'),new Audience()).messages,[]);
 });
 test('Role checks do not grant VIP subscriber-only permissions',()=>{
@@ -134,12 +134,12 @@ test('Old stored commands use online snapshots and never collect targets from me
   assert.equal(e.receive(event('!кусь',{id:'before-list'})).reason,'onlineLoading');
   assert.equal(e.cooldowns.size,0);
   e.audience.replace([{id:'Silent',login:'silent',name:'Silent'}]);
-  assert.equal(e.receive(event('!кусь',{id:'after-list'})).messages[0],'Alice кусает Silent!');
+  assert.equal(e.receive(event('!кусь',{id:'after-list'})).messages[0],'@Alice кусает @Silent!');
 });
 test('Unavailable list blocks only random targets; explicit targets and choices work',()=>{
   const a=new Audience();a.clear('onlinePermission');
   assert.equal(evaluate(sample(),event(),a).reason,'onlinePermission');
-  assert.equal(evaluate(sample(),event('!кусь @Bob'),a).messages[0],'Alice кусает Bob!');
+  assert.equal(evaluate(sample(),event('!кусь @Bob'),a).messages[0],'@Alice кусает @Bob!');
   assert.equal(evaluate(sample('choice'),event('!кто'),a).messages.length,1);
 });
 test('List order and stripe colors survive restart without changing commands or drafts',t=>{

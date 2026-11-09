@@ -114,8 +114,8 @@
 .b-navigation {
 	flex-wrap: wrap;
 }
-.b-command-row {
-	border-left: 4px solid var(--command-color, transparent);
+.command-row.b-command-row {
+	border-left: 4px solid var(--command-color, var(--accent));
 	box-shadow: none;
 }
 .b-command-row.selected {
@@ -126,6 +126,9 @@
 	color: var(--muted);
 	cursor: grab;
 	display: inline-flex;
+}
+.b-command-row .b-command-row__draft {
+	color: var(--accent);
 }
 .b-command-row.b-command-row--before {
 	box-shadow: 0 -3px var(--accent);

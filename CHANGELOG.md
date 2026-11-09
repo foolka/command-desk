@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.4.3 - 2026-11-09
+
+- Reply format uses directly clickable Chat message / Twitch announcement buttons instead of a native popup.
+- Every command has a visible full-height color stripe, including unselected and hovered rows. Unsaved color edits preview immediately and remain drafts.
+- Editor fields have an explicit theme-aware caret and focus outline. Window activation restores focus to the editor; confirmations stay inside the app rather than blocking native dialogs.
+- Existing commands, drafts, order, activation, history and Twitch sign-in are preserved.
+
+## 0.4.2 - Included in 0.4.3
+
+- Command authors and target-step participants are rendered as explicit @mentions, including random targets, manual targets and self-targeting. Localized display names use the account login for a valid mention.
+- Existing templates such as `@{target}` do not produce doubled @ signs; intermediate text and random replies preserve mentions. `{login}` stays unprefixed for URLs and plain-text uses.
+- Existing command definitions, drafts, history, activation and Twitch sign-in are unchanged.
+
+## 0.4.1 - Included in 0.4.3
+
+- Command selection works immediately after startup even when an unfinished draft was restored.
+- Incomplete edits are kept per command when switching, including text and sidebar color. Switching never applies edits to live chat; Save and Discard affect only the selected command.
+- Existing single-command drafts are retained, and all parked drafts survive restart and are included in backups. Commands, activation, ordering and Twitch sign-in remain unchanged.
+
 ## 0.4.0 - 2026-11-09
 
 - Configurable per-viewer repeat protection: by default the third consecutive use of a command within 60 seconds warns, the next blocks commands for 90 seconds, and subsequent violations in the same stream block for 10 minutes. Twitch chat remains available. Penalties survive reconnects and app restarts; a confirmed new stream resets them.

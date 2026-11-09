@@ -1,0 +1,61 @@
+.b-editor-field {
+	caret-color: var(--text);
+	cursor: text;
+}
+.b-editor-field:focus {
+	border-color: var(--accent);
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
+.b-delivery {
+	display: flex;
+	flex-direction: column;
+	gap: 7px;
+	min-width: 0;
+}
+.b-delivery__label {
+	font-size: 12px;
+	color: var(--muted);
+}
+.b-delivery__options {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+.b-delivery__button {
+	flex: 1 1 160px;
+	min-height: 38px;
+	font-size: 13px;
+}
+.b-delivery__button[aria-pressed="true"] {
+	background: var(--accent-bg);
+	border-color: var(--accent);
+	color: var(--accent);
+}
+.b-delivery__button:active {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
+.b-confirm-dialog {
+	width: 420px;
+	max-width: calc(100vw - 32px);
+	padding: 24px;
+	background: var(--surface);
+	color: var(--text);
+	border: 1px solid var(--line);
+	border-radius: 8px;
+}
+.b-confirm-dialog::backdrop {
+	background: #0008;
+}
+.b-confirm-dialog__message {
+	font-size: 16px;
+	line-height: 1.5;
+	margin-bottom: 24px;
+}
+.b-confirm-dialog__actions {
+	display: flex;
+	justify-content: flex-end;
+	flex-wrap: wrap;
+	gap: 8px;
+}

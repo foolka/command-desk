@@ -37,14 +37,16 @@ function updateStatus(){
   }
 }
 function renderNav(){
-  $('#nav').innerHTML=['commands','autoAnnouncements','audience','history','connection'].map((key,i)=>`<button class="${view===key?'active':''}" data-view="${key}">${icon(['terminal','megaphone','users','history','plug'][i])}${esc(t(key))}</button>`).join('')+
+  $('#nav').innerHTML=['commands','autoAnnouncements','protection','audience','history','connection'].map((key,i)=>`<button class="${view===key?'active':''}" data-view="${key}">${icon(['terminal','megaphone','shield-check','users','history','plug'][i])}${esc(t(key))}</button>`).join('')+
     `<div class="nav-spacer"></div><span id="activity" role="status"></span>${iconButton('pause',state.settings.paused?'play':'pause',state.settings.paused?'resume':'pause')}`;
   updateStatus();
 }
 function renderList(){
   const list=$('#command-list');if(!list)return;
   const matches=state.commands.filter(c=>(c.name+' '+c.trigger).toLowerCase().includes(query.toLowerCase()));
-  list.innerHTML=matches.map(c=>`<button class="command-row ${c.id===selected?'selected':''}" data-select="${c.id}"><span class="dot ${c.enabled?'on':''}"></span><span><strong>${esc(c.trigger)}</strong><small>${esc(c.name)}</small><small class="command-state ${c.enabled?'on':''}">${t(c.enabled?'commandOn':'commandOff')}</small></span><span class="step-count">${c.steps.length}</span></button>`).join('');
+  list.innerHTML=matches.map(c=>`<button class="command-row b-command-row ${c.id===selected?'selected':''}" data-select="${c.id}" draggable="true"><span class="dot ${c.enabled?'on':''}"></span><span><strong>${esc(c.trigger)}</strong><small>${esc(c.name)}</small><small class="command-state ${c.enabled?'on':''}">${t(c.enabled?'commandOn':'commandOff')}</small></span><span class="b-command-row__grip" title="${t('dragCommand')}">${icon('grip-vertical')}</span></button>`).join('');
+  for(const row of list.children){const color=state.commands.find(c=>c.id===row.dataset.select)?.sidebarColor;if(color)row.style.setProperty('--command-color',color);}
+  icons();
   $('#command-count').textContent=state.commands.length;
 }
 function render(){
@@ -57,6 +59,7 @@ function render(){
       <div class="workspace"><div id="editor"></div><aside id="simulation"></aside></div>`;
     renderList();renderEditor();renderSimulation();
   }else if(view==='connection')renderConnection();
+  else if(view==='protection')renderProtection();
   else if(view==='autoAnnouncements')renderAnnouncements();
   else renderTable();
   icons();
@@ -66,13 +69,14 @@ function renderEditor(){
   if(!draft){$('#editor').innerHTML=`<div class="empty">${icon('terminal')}<h2>${t('empty')}</h2><button class="primary" data-action="create">${icon('plus')}${t('newCommand')}</button></div>`;return;}
   draft.enabled=state.commands.find(command=>command.id===draft.id)?.enabled??false;
   $('#editor').innerHTML=`<form id="command-form"><div class="editor-scroll">
-    <div class="section-title"><h2>${esc(draft.name)}</h2>${iconButton('delete','trash-2','delete')}</div>
+    <div class="section-title"><h2>${esc(draft.name)}</h2><div class="tools">${iconButton('moveCommandUp','arrow-up','moveCommandUp',state.commands[0]?.id===selected?'disabled':'')}${iconButton('moveCommandDown','arrow-down','moveCommandDown',state.commands.at(-1)?.id===selected?'disabled':'')}${iconButton('delete','trash-2','delete')}</div></div>
     <button type="button" role="switch" aria-checked="${!!draft.enabled}" class="b-command-switch" data-action="toggleCommand" aria-label="${t(draft.enabled?'commandDisable':'commandEnable')}">
       ${icon('power')}<span>${t(draft.enabled?'commandIsOn':'commandIsOff')}</span><span class="b-command-switch__state">${t(draft.enabled?'commandDisable':'commandEnable')}</span>
     </button>
     <section><h3 class="b-stage"><span class="b-stage__number">1</span>${t('when')}${help('enabledHelp')}</h3><div class="grid two">${label('name',input('name',draft.name,'text','maxlength="80"'))}
       ${label('trigger',input('trigger',draft.trigger,'text','maxlength="41"'),'triggerHelp')}
       ${label('aliases',input('aliases',Array.isArray(draft.aliases)?draft.aliases.join(' '):draft.aliases),'aliasHelp')}
+      ${label('sidebarColor',`<div class="b-color-control"><input data-sidebar-color type="color" value="${esc(draft.sidebarColor||'#117e70')}" aria-label="${t('sidebarColor')}"><input data-field="sidebarColor" type="hidden" value="${esc(draft.sidebarColor||'')}">${iconButton('clearSidebarColor','rotate-ccw','clearSidebarColor')}</div>`)}
       </div></section>
     <section><h3 class="b-stage"><span class="b-stage__number">2</span>${t('build')}</h3>
       <div class="steps">${draft.steps.map(renderStep).join('')||`<div class="notice">${t('noSteps')}</div>`}</div>
@@ -80,13 +84,14 @@ function renderEditor(){
     <section><h3 class="b-stage"><span class="b-stage__number">3</span>${t('send')}</h3>
       <div class="grid two">${label('delivery',select('delivery',draft.delivery||'message',['message','announcement']))}${label('color',select('color',draft.color||'primary',['primary','blue','green','orange','purple']).replace('data-field="color"',`data-field="color" ${draft.delivery==='announcement'?'':'disabled'}`))}</div>
       <div class="b-announcement-warning" ${draft.delivery==='announcement'&&!state.auth.announcementsAllowed?'':'hidden'}>${t('announcementPermission')} <button type="button" data-view="connection">${t('connection')}</button></div>
-      <div class="b-segment" role="group" aria-label="${t('responseMode')}">${['all','random'].map(mode=>`<button type="button" class="b-segment__button" data-action="replyMode" data-mode="${mode}" aria-pressed="${(draft.responseMode||'all')===mode}">${icon(mode==='random'?'shuffle':'list')}${t(mode==='random'?'randomReply':'all')}</button>`).join('')}</div>
+      <div class="b-segment" role="group" aria-label="${t('responseMode')}">${['all','random','number'].map(mode=>`<button type="button" class="b-segment__button" data-action="replyMode" data-mode="${mode}" ${mode==='number'&&!draft.steps.some(s=>s.type==='number')?'disabled':''} aria-pressed="${(draft.responseMode||'all')===mode}">${icon(mode==='random'?'shuffle':mode==='number'?'chart-no-axes-combined':'list')}${t(mode==='random'?'randomReply':mode==='number'?'byNumber':'all')}</button>`).join('')}</div>
+      ${draft.responseMode==='number'?label('numberSource',numberSource('responseVariable',draft.responseVariable||'amount',draft.steps),'orderedHelp'):''}
       ${label('responses',textarea('responses',draft.responses,5),'responseHelp')}
       <div class="variables"><span>${t('variables')}</span>${['user','login','channel','args','arg1','command','commands',...draft.steps.map(s=>s.variable)].map(v=>`<button type="button" class="b-variable" data-action="insertVariable" data-variable="${esc(v)}" title="${esc(dictionaries[state.settings.language]['variable_'+v]||v)}">{${esc(v)}}</button>`).join('')}</div>
       <div class="grid two fallback">${label('noTargetText',input('noTargetText',draft.noTargetText))}
       ${label('invalidTargetText',input('invalidTargetText',draft.invalidTargetText))}</div></section>
     <section class="grid three">${label('role',select('role',draft.role,['everyone','subscribers','vips','mods','broadcaster']))}
-      ${label('globalCooldown',input('globalCooldown',draft.globalCooldown,'number','min="0" max="86400"'),'cooldownHelp')}
+      ${label('globalCooldown',input('globalCooldown',draft.globalCooldown,'number',`min="0" max="86400" ${state.settings.globalCooldowns?'':'disabled'}`),'globalGateHelp')}
       ${label('userCooldown',input('userCooldown',draft.userCooldown,'number','min="0" max="86400"'),'cooldownHelp')}</section>
     </div><footer><span id="save-status">${t(dirty?'draft':'saved')}</span><div class="tools">${iconButton('discard','undo-2','discard')}<button type="submit" class="primary">${icon('save')}${t('save')}</button></div></footer></form>`;
   $('.editor-scroll').scrollTop=scroll;
@@ -97,7 +102,10 @@ function renderStep(s,index){
   let content='';
   if(s.type==='target')content=`<div class="grid two">${label('mode',prop('mode',select('mode',s.mode,['argument_or_random','random','self','argument'])),'targetHelp')}
     ${label('pool',`<input value="${esc(t('onlinePool'))}" readonly>`,'poolHelp')}</div><label class="check"><input data-prop="allowSelf" type="checkbox" ${s.allowSelf?'checked':''}>${t('allowSelf')}</label>`;
-  if(s.type==='choice')content=label('choices',prop('choices',textarea('choices',s.choices,4)));
+  if(s.type==='choice'){
+    const previous=draft.steps.slice(0,index),mode=s.selectionMode||(previous.some(p=>p.type==='number'&&p.variable==='amount')?'number':'random');
+    content=`<div class="grid two">${label('listSelection',`<select data-prop="selectionMode"><option value="random" ${mode==='random'?'selected':''}>${t('listRandom')}</option><option value="number" ${mode==='number'?'selected':''} ${previous.some(p=>p.type==='number')?'':'disabled'}>${t('byNumber')}</option></select>`,'orderedHelp')}${mode==='number'?label('numberSource',prop('numberVariable',numberSource('numberVariable',s.numberVariable||'amount',previous))):''}</div>`+label('choices',prop('choices',textarea('choices',s.choices,4)),mode==='number'?'orderedHelp':'');
+  }
   if(s.type==='number')content=`<div class="grid two">${label('min',prop('min',input('min',s.min,'number','min="-1000000" max="1000000"')))}${label('max',prop('max',input('max',s.max,'number','min="-1000000" max="1000000"')))}</div>`;
   if(s.type==='text')content=label('textValue',prop('text',textarea('text',s.text,2)),'variableHelp');
   return `<div class="step" data-step="${index}"><div class="step-heading"><span class="step-index">${index+1}</span>${icon({target:'user-round',choice:'shuffle',number:'dices',text:'text-cursor-input'}[s.type])}<span class="b-step-label">${t(s.type)}</span>
@@ -146,7 +154,7 @@ function renderTable(){
   const people=view==='audience';
   $('#main').innerHTML=`<div class="page-scroll"><div class="section-title"><h2>${t(view)}</h2>${people?`<span>${state.audience.length}</span>`:`<button data-action="clearHistory">${icon('trash-2')}${t('clearHistory')}</button>`}</div>${people?`<div class="notice">${t(state.audienceStatus)}${state.audienceUpdatedAt!==null?' · '+new Date(state.audienceUpdatedAt).toLocaleTimeString():''}${help('poolHelp')}</div>`:''}<table><thead><tr>${(people?['name','presence']:['time','event','details']).map(k=>`<th>${t(k)}</th>`).join('')}</tr></thead><tbody>${
     people?state.audience.map(p=>`<tr><td>${esc(p.name)} <span class="muted">@${esc(p.login)}</span></td><td>${t('inChat')}</td></tr>`).join(''):
-      state.history.map(r=>`<tr><td>${new Date(r.at).toLocaleTimeString()}</td><td>${t(r.code)}</td><td>${esc(r.data.command||'')} ${esc(r.data.message||'')}${r.data.status?esc(typeof r.data.status==='number'?'HTTP '+r.data.status:t(r.data.status)):''}${r.data.code?esc(t(r.data.code)):''}${r.data.count!==undefined?esc(r.data.count):''}</td></tr>`).join('')
+      state.history.map(r=>`<tr><td>${new Date(r.at).toLocaleTimeString()}</td><td>${t(r.code)}</td><td>${r.data.user?'@'+esc(r.data.user)+' ':''}${esc(r.data.command||'')} ${esc(r.data.message||'')}${r.data.seconds?' '+esc(r.data.seconds)+' '+t('secondsShort'):''}${r.data.status?esc(typeof r.data.status==='number'?'HTTP '+r.data.status:t(r.data.status)):''}${r.data.code?esc(t(r.data.code)):''}${r.data.count!==undefined?esc(r.data.count):''}</td></tr>`).join('')
   }</tbody></table>${(people?state.audience:state.history).length?'':`<div class="empty">${t(people?'noAudience':'noHistory')}</div>`}</div>`;
 }
 async function refresh(){

@@ -124,7 +124,63 @@ async function save(){await page.locator('button[type=submit]').click();await pa
   await page.locator('[data-timer] [data-field=text]').fill('Будьте добры друг к другу.');
   await page.locator('[data-timer] button[type=submit]').click();
   await page.waitForFunction(async()=>!(await window.desk.state()).value.timerDraft);
-  assert.deepEqual(errors,[]);console.log('UI verified: workflows, 3 languages, 2 themes, draft recovery, fixed header, compact layout.');
+  await page.locator('[data-view=protection]').click();
+  assert.equal(await page.locator('[data-setting=antiSpam]').isChecked(),true);
+  assert.equal(await page.locator('[data-setting=globalCooldowns]').isChecked(),false);
+  for(const [key,value]of Object.entries({spamRepeats:'4',spamWindowSeconds:'45',spamFirstBlockSeconds:'120',spamRepeatBlockSeconds:'900'}))await page.locator(`[data-setting=${key}]`).fill(value);
+  await page.locator('#protection-form button[type=submit]').click();
+  await page.waitForFunction(async()=>(await window.desk.state()).value.settings.spamRepeatBlockSeconds===900);
+  for(const language of ['ru','en','uk']){
+    await page.locator('#language').selectOption(language);
+    for(const width of [1400,960]){
+      await page.setViewportSize({width,height:850});
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+      await page.screenshot({path:path.join(out,`protection-${language}-${width}.png`)});
+    }
+  }
+  await page.locator('#language').selectOption('ru');
+  await page.locator('[data-view=commands]').click();await act('create');
+  await page.locator('[data-action=createTemplate][data-kind=combined]').click();
+  assert.equal(await page.locator('[data-prop=selectionMode]').inputValue(),'number');
+  assert.equal(await page.locator('[data-prop=numberVariable]').inputValue(),'amount');
+  await page.locator('[data-prop=selectionMode]').selectOption('random');
+  assert.equal(await page.locator('[data-prop=numberVariable]').count(),0);
+  await save();
+  await page.locator('[data-prop=selectionMode]').selectOption('number');
+  await page.locator('[data-prop=choices]').fill('Низкий результат\nСредний результат\nВысокий результат');
+  await page.locator('[data-action=replyMode][data-mode=number]').click();
+  await page.locator('[data-field=responses]').fill('{user} {amount}: мало\n{user} {amount}: много');
+  await save();await page.locator('#test-message').fill('!химия @ViewerTwo');await act('test');
+  const result=await page.evaluate(()=>testResult);
+  const amount=Number(result.trace.find(step=>step.variable==='amount').value);
+  const choice=result.trace.find(step=>step.variable==='choice').value;
+  assert.equal(choice,amount<=33?'Низкий результат':amount<=67?'Средний результат':'Высокий результат');
+  assert.equal(result.messages[0],`ViewerOne ${amount}: ${amount<=50?'мало':'много'}`);
+  await page.setViewportSize({width:1400,height:850});
+  await page.screenshot({path:path.join(out,'ordered-replies.png')});
+  const changed=await page.evaluate(()=>window.desk.state());const last=changed.value.commands.at(-1);
+  assert.equal(last.responseMode,'number');assert.equal(last.steps[2].selectionMode,'number');
+  assert.equal(changed.value.settings.spamWindowSeconds,45);
+  await page.locator('[data-sidebar-color]').fill('#ff3355');await save();
+  assert.equal(await page.locator('.command-row.selected').evaluate(el=>getComputedStyle(el).borderLeftColor),'rgb(255, 51, 85)');
+  const rowIds=await page.locator('.command-row').evaluateAll(rows=>rows.map(row=>row.dataset.select));
+  const lastId=rowIds.at(-1),firstId=rowIds[0];
+  // Keep both drag endpoints visible so Playwright does not scroll the source away before pressing.
+  await page.setViewportSize({width:1400,height:2200});
+  await page.locator('.command-row').last().dragTo(page.locator('.command-row').first(),{targetPosition:{x:30,y:2}});
+  await page.waitForFunction(id=>document.querySelector('.command-row')?.dataset.select===id,lastId);
+  assert.equal(await page.locator('.command-row').first().evaluate(el=>getComputedStyle(el).borderLeftColor),'rgb(255, 51, 85)');
+  await act('moveCommandDown');await page.waitForFunction(id=>document.querySelector('.command-row')?.dataset.select===id,firstId);
+  const sorted=await page.evaluate(()=>window.desk.state());assert.equal(sorted.value.commands[1].id,lastId);
+  await page.setViewportSize({width:1400,height:850});
+  for(const theme of ['light','dark']){
+    if(await page.evaluate(()=>document.documentElement.dataset.theme)!==theme)await page.locator('#theme').click();
+    await page.screenshot({path:path.join(out,`sidebar-color-${theme}.png`)});
+  }
+  await app.close();app=null;await launch();await page.locator('[data-view=protection]').click();
+  assert.equal(await page.locator('[data-setting=spamWindowSeconds]').inputValue(),'45');
+  const restarted=await page.evaluate(()=>window.desk.state());assert.equal(restarted.value.commands[1].id,lastId);assert.equal(restarted.value.commands[1].sidebarColor,'#ff3355');
+  assert.deepEqual(errors,[]);console.log('UI verified: workflows, protection options, ordered responses, 3 languages, 2 themes, persistence and compact layout.');
  }finally{
   if(app)await app.close();
   assert.ok(path.resolve(profile).startsWith(path.resolve(os.tmpdir())+path.sep+'command-desk-ui-'));

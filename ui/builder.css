@@ -100,11 +100,43 @@
 .b-segment {
 	display: flex;
 	gap: 4px;
+	flex-wrap: wrap;
 	margin: 8px 0 14px;
 }
 .b-segment__button {
-	flex: 1;
+	flex: 1 1 145px;
 	font-size: 13px;
+}
+.b-protection {
+	display: grid;
+	gap: 24px;
+}
+.b-navigation {
+	flex-wrap: wrap;
+}
+.b-command-row {
+	border-left: 4px solid var(--command-color, transparent);
+	box-shadow: none;
+}
+.b-command-row.selected {
+	border-left-color: var(--command-color, var(--accent));
+	box-shadow: none;
+}
+.b-command-row__grip {
+	color: var(--muted);
+	cursor: grab;
+	display: inline-flex;
+}
+.b-command-row.b-command-row--before {
+	box-shadow: 0 -3px var(--accent);
+}
+.b-command-row.b-command-row--after {
+	box-shadow: 0 3px var(--accent);
+}
+.b-color-control {
+	display: flex;
+	gap: 8px;
+	max-width: 140px;
 }
 .b-segment__button[aria-pressed="true"] {
 	background: var(--accent-bg);

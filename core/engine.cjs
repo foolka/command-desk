@@ -1,5 +1,6 @@
 const {randomInt}=require('node:crypto');
-const {BASE,BOTS,normalize}=require('./model.cjs');
+const {BASE,BOTS,normalize,settings}=require('./model.cjs');
+const {SpamGuard}=require('./spam.cjs');
 const fill=(text,values)=>text.replace(/\{([a-z][a-z0-9_]*)\}/g,(_,key)=>values[key]??'');
 const output=text=>{
   const message=String(text).replace(/[\r\n\x00-\x1f\x7f]/g,' ').trim();
@@ -27,11 +28,17 @@ function roleAllowed(role,badges={}) {
   if(role==='mods')return false;
   return role==='vips'?has('vip'):has('subscriber')||has('founder');
 }
+// Equal integer ranges map low values to the first line and the maximum to the last.
+function scaledChoice(choices,value,step){
+  const span=step.max-step.min+1;
+  const index=step.max>step.min&&Number(value)>=step.max?choices.length-1:Math.min(choices.length-1,Math.max(0,Math.floor((Number(value)-step.min)*choices.length/span)));
+  return choices[index];
+}
 function evaluate(command,event,audience,config={},rng=randomInt) {
   const parts=event.text.trim().split(/\s+/u);
   const values=Object.assign(Object.create(null),{user:event.name||event.login,login:event.login,channel:event.channel||'',args:parts.slice(1).join(' '),arg1:parts[1]||'',command:parts[0],commands:config.commandList||''});
   const excluded=new Set([...BOTS,...(config.excluded||[]),event.channel||''].map(s=>s.toLowerCase()));
-  const trace=[];
+  const trace=[],numbers=new Map();
   for(const s of command.steps) {
     let value;
     if(s.type==='target') {
@@ -47,22 +54,32 @@ function evaluate(command,event,audience,config={},rng=randomInt) {
         if(!candidates.length)return {messages:command.noTargetText?[output(fill(command.noTargetText,values))]:[],trace,reason:'noTarget'};
         value=candidates[rng(candidates.length)].name;
       }
-    }else if(s.type==='choice')value=fill(s.choices[rng(s.choices.length)],values);
-    else if(s.type==='number')value=String(rng(s.min,s.max+1));
+    }else if(s.type==='choice'){
+      const mode=s.selectionMode||(numbers.has('amount')?'number':'random');
+      const source=numbers.get(s.numberVariable||'amount');
+      if(mode==='number'&&!source)throw Error('invalidNumberSource');
+      value=fill(mode==='number'?scaledChoice(s.choices,values[source.variable],source):s.choices[rng(s.choices.length)],values);
+    }
+    else if(s.type==='number'){value=String(rng(s.min,s.max+1));numbers.set(s.variable,s);}
     else value=fill(s.text,values);
     values[s.variable]=value;trace.push({variable:s.variable,value});
   }
-  const replies=command.responseMode==='random'?[command.responses[rng(command.responses.length)]]:command.responses;
+  let replies=command.responseMode==='random'?[command.responses[rng(command.responses.length)]]:command.responses;
+  if(command.responseMode==='number'){
+    const source=numbers.get(command.responseVariable||'amount');
+    if(!source)throw Error('invalidNumberSource');
+    replies=[scaledChoice(command.responses,values[source.variable],source)];
+  }
   const messages=replies.map(t=>output(fill(t,values))).filter(Boolean);
   return {messages,trace,reason:'ready'};
 }
 class Engine {
-  constructor({store,now=Date.now,rng=randomInt}){Object.assign(this,{store,now,rng});this.audience=new Audience(now);this.cooldowns=new Map();}
+  constructor({store,now=Date.now,rng=randomInt}){Object.assign(this,{store,now,rng});this.audience=new Audience(now);this.cooldowns=new Map();this.spam=new SpamGuard(store,now);}
   reset(){this.audience.clear();this.cooldowns.clear();}
   receive(event){
     if(!event.id||!event.userId||!event.login||typeof event.text!=='string')return null;
     if(!this.store.claim(event.id))return null;
-    const config=this.store.settings();
+    const config=settings(this.store.settings());
     // Ignore shared-chat neighbours and messages emitted by this application.
     if(event.foreign||event.echo)return null;
     if([...BOTS,...config.excluded].includes(event.login.toLowerCase()))return null;
@@ -74,8 +91,10 @@ class Engine {
     if(config.paused)return skipped('commandsPaused');
     if(!c.enabled)return skipped('commandDisabled');
     if(!roleAllowed(c.role,event.badges))return skipped('roleBlocked');
+    const spam=this.spam.check(event,c,config);
+    if(spam)return {...skipped(spam.reason),delivery:'message',...spam};
     const now=this.now(),global=c.id,user=c.id+':'+event.userId;
-    if(now<(this.cooldowns.get(global)||0)||now<(this.cooldowns.get(user)||0))return skipped('cooldownActive');
+    if((config.globalCooldowns&&now<(this.cooldowns.get(global)||0))||now<(this.cooldowns.get(user)||0))return skipped('cooldownActive');
     config.commandList=this.store.commands().filter(item=>item.enabled&&roleAllowed(item.role,event.badges)).map(item=>item.trigger).join(', ');
     const result={command:c.trigger,user:event.login,delivery:c.delivery||'message',color:c.color||'primary',...evaluate(c,event,this.audience,config,this.rng)};
     if(result.reason.startsWith('online'))return result;

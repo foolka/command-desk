@@ -30,7 +30,7 @@ test('Ambiguous failures are logged without retry or raw errors',async t=>{
 });
 test('Queue expires and pause clears pending messages',async t=>{
  const f=fixture(t);let count=0;f.twitch.api={chat:{sendChatMessage:async()=>{count++;return{id:'x'};}}};
- f.twitch.queue=[{message:'old',at:Date.now()-30000,command:'!old'}];await f.twitch.drain();
+ f.twitch.queue=[{message:'old',at:Date.now()-300001,command:'!old'}];await f.twitch.drain();
  assert.equal(count,0);assert.ok(f.logs.some(x=>x.code==='expired'));
  f.store.settings=()=>({paused:true});f.twitch.queue=[{message:'new',at:Date.now()}];await f.twitch.drain();assert.equal(f.twitch.queue.length,0);
 });

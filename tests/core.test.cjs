@@ -142,3 +142,16 @@ test('Unavailable list blocks only random targets; explicit targets and choices 
   assert.equal(evaluate(sample(),event('!кусь @Bob'),a).messages[0],'Alice кусает Bob!');
   assert.equal(evaluate(sample('choice'),event('!кто'),a).messages.length,1);
 });
+test('List order and stripe colors survive restart without changing commands or drafts',t=>{
+  const root=temporary(t);let s=new Store(root);
+  const a=s.save({...sample(),sidebarColor:'#ff3355'}),b=s.save(sample('choice'));
+  s.setMeta('draft',{...a,name:'Unfinished edit'});s.log('sent',{message:'keep'});
+  const identity=s.meta('id'),history=s.history(),draft=s.meta('draft');
+  s.reorder([b.id,a.id]);assert.deepEqual(s.commands(),[b,a]);
+  assert.throws(()=>s.reorder([a.id,a.id]),/invalidOrder/);assert.throws(()=>s.reorder([a.id]),/invalidOrder/);
+  assert.throws(()=>s.save({...a,sidebarColor:'url(https://example.com)'}),/invalidColor/);
+  s.close();s=new Store(root);
+  assert.equal(s.meta('id'),identity);assert.deepEqual(s.commands(),[b,a]);assert.deepEqual(s.history(),history);assert.deepEqual(s.meta('draft'),draft);
+  const added=s.save({...sample(),trigger:'!new'});assert.deepEqual(s.commands().map(c=>c.id),[b.id,a.id,added.id]);
+  s.remove(b.id);assert.deepEqual(s.commands().map(c=>c.id),[a.id,added.id]);s.close();
+});

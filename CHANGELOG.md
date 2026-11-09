@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0 - 2026-11-09
+
+- Configurable per-viewer repeat protection: by default the third consecutive use of a command within 60 seconds warns, the next blocks commands for 90 seconds, and subsequent violations in the same stream block for 10 minutes. Twitch chat remains available. Penalties survive reconnects and app restarts; a confirmed new stream resets them.
+- Different viewers no longer block each other by default. Existing personal cooldowns and saved shared cooldown values are preserved; shared cooldown enforcement is now opt-in under Protection.
+- The bounded reply queue accepts bursts from multiple viewers, retains pending replies during a socket reconnect, and gives interactive replies precedence over waiting timers. Automatic duplicate suppression no longer silences manual information commands.
+- Ordered text/reply selection by a number step, with editable source and an independent random mode. Existing choice lists following an `amount` step use ordered selection without replacing their text.
+- Drag commands to reorder the sidebar, or use the editor arrow buttons. Each command can have its own full-height sidebar stripe, independent of Twitch announcement color.
+- Russian, Ukrainian and English settings/help, isolated concurrency/spam/order tests, installer and portable builds. Existing commands, drafts, IDs, enabled states, history and Twitch sign-in are preserved.
+
 ## 0.3.1
 
 - First public release: installer and portable ZIP, three languages and two themes.

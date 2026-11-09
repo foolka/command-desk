@@ -27,10 +27,11 @@ function normalize(input) {
   if(!input||typeof input!=='object'||Array.isArray(input))throw Error('invalidCommand');
   const c={id:input.id||randomUUID(),name:text(input.name||input.trigger,80),trigger:trigger(input.trigger),
     aliases:[...new Set(clean(input.aliases instanceof Array?input.aliases.join('\n'):input.aliases).split(/[\s,]+/u).filter(Boolean).map(trigger))],
-    enabled:input.enabled!==false,role:input.role||'everyone',globalCooldown:number(input.globalCooldown??5,0,86400),
+    enabled:input.enabled!==false,role:input.role||'everyone',globalCooldown:number(input.globalCooldown??0,0,86400),
     userCooldown:number(input.userCooldown??15,0,86400),steps:[],responses:[],
-    responseMode:input.responseMode||'all',delivery:input.delivery||'message',color:input.color||'primary'};
-  if(!['all','random'].includes(c.responseMode)||!['message','announcement'].includes(c.delivery)||!['primary','blue','green','orange','purple'].includes(c.color))throw Error('invalidCommand');
+    responseMode:input.responseMode||'all',delivery:input.delivery||'message',color:input.color||'primary',sidebarColor:input.sidebarColor||''};
+  if(c.sidebarColor&&!/^#[0-9a-f]{6}$/i.test(c.sidebarColor))throw Error('invalidColor');
+  if(!['all','random','number'].includes(c.responseMode)||!['message','announcement'].includes(c.delivery)||!['primary','blue','green','orange','purple'].includes(c.color))throw Error('invalidCommand');
   if(!/^[a-f0-9-]{36}$/.test(c.id)||c.aliases.length>20||!['everyone','subscribers','vips','mods','broadcaster'].includes(c.role))throw Error('invalidCommand');
   const known=new Set(BASE);
   // Older workflows could already use this name for a step result.
@@ -43,6 +44,13 @@ function normalize(input) {
       s.mode=step.mode||'argument_or_random';s.pool='online';s.allowSelf=!!step.allowSelf;
       if(!['argument_or_random','random','self','argument'].includes(s.mode))throw Error('invalidSteps');
     }else if(s.type==='choice') {
+      const amount=c.steps.find(previous=>previous.type==='number'&&previous.variable==='amount');
+      s.selectionMode=step.selectionMode||(amount?'number':'random');
+      if(!['random','number'].includes(s.selectionMode))throw Error('invalidNumberSource');
+      if(s.selectionMode==='number'){
+        s.numberVariable=step.numberVariable||amount?.variable;
+        if(!c.steps.some(previous=>previous.type==='number'&&previous.variable===s.numberVariable))throw Error('invalidNumberSource');
+      }
       s.choices=(Array.isArray(step.choices)?step.choices:clean(step.choices).split('\n')).map(v=>template(v,known)).filter(Boolean);
       if(!s.choices.length||s.choices.length>1000)throw Error('emptyChoices');
     }else if(s.type==='number') {
@@ -52,7 +60,11 @@ function normalize(input) {
     c.steps.push(s);known.add(s.variable);
   }
   c.responses=(Array.isArray(input.responses)?input.responses:clean(input.responses).split('\n')).map(v=>template(v,known)).filter(Boolean);
-  if(!c.responses.length||c.responses.length>(c.responseMode==='random'?100:3))throw Error('invalidResponses');
+  if(!c.responses.length||c.responses.length>(c.responseMode==='all'?3:100))throw Error('invalidResponses');
+  if(c.responseMode==='number'){
+    c.responseVariable=input.responseVariable||'amount';
+    if(!c.steps.some(step=>step.type==='number'&&step.variable===c.responseVariable))throw Error('invalidNumberSource');
+  }
   c.noTargetText=template(input.noTargetText??'',new Set(BASE));
   c.invalidTargetText=template(input.invalidTargetText??'',new Set(BASE));
   return c;
@@ -60,6 +72,11 @@ function normalize(input) {
 function settings(input={}) {
   return {language:['ru','uk','en'].includes(input.language)?input.language:'ru',
     theme:input.theme==='dark'?'dark':'light',paused:!!input.paused,
+    antiSpam:input.antiSpam!==false,spamRepeats:number(input.spamRepeats??3,2,20),
+    spamWindowSeconds:number(input.spamWindowSeconds??60,5,3600),
+    spamFirstBlockSeconds:number(input.spamFirstBlockSeconds??90,5,86400),
+    spamRepeatBlockSeconds:number(input.spamRepeatBlockSeconds??600,5,86400),
+    globalCooldowns:input.globalCooldowns===true,
     excluded:[...new Set((Array.isArray(input.excluded)?input.excluded:clean(input.excluded).split(/[\s,]+/)).map(v=>clean(v).replace(/^@/,'').toLowerCase()).filter(v=>/^[a-z0-9_]{1,25}$/.test(v)))].slice(0,1000)};
 }
 function sample(kind='target',language='ru') {

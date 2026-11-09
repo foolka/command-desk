@@ -2,7 +2,7 @@
 
 [Русский](../README.md) · [Українська](README.uk.md)
 
-Public release **0.3.1**. A local Windows Twitch command builder that replies as the broadcaster. No separate bot account, Streamer.bot or hosted backend is required.
+Public release **0.4.0**. A local Windows Twitch command builder that replies as the broadcaster. No separate bot account, Streamer.bot or hosted backend is required.
 
 Fresh profiles include **10 editable commands and a command-list auto announcement**, all disabled until you choose to enable them. Updates never overwrite existing commands or restore deleted examples. [Launch Desk OBS](https://github.com/foolka/launch-desk-obs) 0.3.0+ can start the app normally or in the tray with OBS. Timed messages support `{commands}` for currently enabled commands available to everyone; empty or over-500-character results are skipped.
 
@@ -58,7 +58,17 @@ Twitch permissions: `user:read:chat`, `user:write:chat`, `moderator:read:chatter
 
 The memory-only participant list comes from [Get Chatters](https://dev.twitch.tv/docs/api/reference#get-chatters), not chat messages. It includes connected chat users, not every video viewer, and Twitch reports joins/leaves with a delay. All pages must load before replacing the list. Failed requests or a snapshot older than 90 seconds suspend random targets and report the reason in the interface/history; there is no fallback to old messages. Known bots and configured exclusions are omitted, but bot detection is not infallible.
 
-History retains 200 diagnostic/reply records and can be cleared. Bounded message IDs prevent reprocessing. The send queue holds 30 messages, expires at 20 seconds, and permits at most 20 sends per 30 seconds with 1.2-second spacing. Ambiguous network failures are never automatically resent. Shared-chat messages from other channels are ignored.
+History retains 200 diagnostic/reply records and can be cleared. Bounded message IDs prevent reprocessing. The queue holds 120 messages for up to 5 minutes, with at most 20 sends per 30 seconds, 1.2-second spacing and 2.1-second announcement spacing. Pending replies survive socket reconnects and precede waiting timers; pausing or signing out clears them. Ambiguous network failures are never automatically resent. Shared-chat messages from other channels are ignored.
+
+## Protection and ordered replies
+
+Protection settings control the repeat threshold, counting window and both command-block durations. Defaults: the third consecutive use of the same command by one viewer within 60 seconds warns without executing; the next matching attempt blocks all their commands for 90 seconds. Further violations in this stream block for 10 minutes. Twitch chat is never timed out. Aliases count together; other viewers do not affect the sequence. Switching commands breaks a sequence before blocking. Penalties survive restart and reconnect, and reset on a confirmed new stream.
+
+Shared cooldowns are off by default so different viewers can invoke commands together. Stored values remain available via Protection; personal command cooldowns still apply. Duplicate-text suppression applies only to automatic announcements, never to an explicitly requested command such as `!commands`.
+
+Lists and replies support number-based selection. Order lines from bad to good and choose a number step. With 0–100 and five lines, the ranges are 0–20, 21–40, 41–60, 61–80 and 81–100. The maximum picks the last line; a constant range picks the first. Existing lists after an `amount` number step use this mode without changing any text. Independent random selection remains available.
+
+Drag commands in the sidebar or use the editor arrow buttons. Each command has an optional full-height stripe color independent of Twitch announcement color. Order, color, command IDs and enabled states survive updates and restart.
 
 When Shared Chat is active, Twitch distributes replies from the streamer's account to all participating channels. User-token replies cannot be restricted to the source channel.
 

@@ -79,10 +79,10 @@ test('Announcement commands use real SDK endpoint and scope, not /announce in ch
 		throw Error('ambiguous timeout');
 	};
 	twitch.api=api;twitch.receive({...event,text:c.trigger});await new Promise(r=>setImmediate(r));
-	assert.equal(calls,1);twitch.lastSent=0;twitch.lastAnnouncement=0;
-	twitch.receive({...event,id:'b',text:c.trigger});await new Promise(r=>setImmediate(r));assert.equal(calls,1);
-	assert.ok(store.history().some(row=>row.code==='duplicateAnnouncement'));
-	auth.saved.token.scope=[];twitch.receive({...event,id:'c',text:c.trigger});assert.ok(store.history().some(row=>row.code==='announcementPermission'));
+ assert.equal(calls,1);twitch.lastSent=0;twitch.lastAnnouncement=0;
+ twitch.receive({...event,id:'b',text:c.trigger});await new Promise(r=>setImmediate(r));assert.equal(calls,2);
+ assert.ok(!store.history().some(row=>row.code==='duplicateAnnouncement'));
+ auth.saved.token.scope=[];twitch.receive({...event,id:'c',userId:'other',text:c.trigger});assert.ok(store.history().some(row=>row.code==='announcementPermission'));
 });
 test('Automatic dispatch is disabled in test mode and fresh live status is required',t=>{
 	const store=fixture(t),auth=new EventEmitter();auth.saved={token:{scope:['moderator:manage:announcements']}};

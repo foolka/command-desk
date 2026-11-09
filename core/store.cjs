@@ -64,7 +64,17 @@ class Store{
   setMeta(key,value){this.db.prepare('INSERT INTO meta VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key,JSON.stringify(value));}
   settings(){return settings(this.meta('settings',{}));}
   saveSettings(value){this.setMeta('settings',settings(value));}
-  commands(){return this.db.prepare('SELECT data FROM commands ORDER BY rowid').all().map(r=>JSON.parse(r.data));}
+  commands(){
+    const commands=this.db.prepare('SELECT data FROM commands ORDER BY rowid').all().map(r=>JSON.parse(r.data));
+    const order=new Map(this.meta('commandOrder',[]).map((id,index)=>[id,index]));
+    return commands.sort((a,b)=>(order.get(a.id)??Number.MAX_SAFE_INTEGER)-(order.get(b.id)??Number.MAX_SAFE_INTEGER));
+  }
+  // Store presentation order separately: command IDs, contents and enabled states stay intact.
+  reorder(ids){
+    const commands=this.commands(),known=new Set(commands.map(c=>c.id));
+    if(!Array.isArray(ids)||ids.length!==commands.length||new Set(ids).size!==ids.length||ids.some(id=>!known.has(id)))throw Error('invalidOrder');
+    this.backup();this.setMeta('commandOrder',ids);return this.commands();
+  }
   validateNames(commands){
     const used=new Set();
     for(const c of commands)for(const t of new Set([c.trigger,...c.aliases])){
@@ -74,7 +84,7 @@ class Store{
   backup(){
     const folder=path.join(this.root,'backups');fs.mkdirSync(folder,{recursive:true});
     const file=path.join(folder,`${this.now()}-${randomUUID()}.json`);
-    atomic(file,JSON.stringify({version:1,commands:this.commands(),settings:this.settings(),announcements:this.meta('announcements',[]),announcementSettings:this.meta('announcementSettings'),draft:this.meta('draft'),timerDraft:this.meta('timerDraft')},null,2));
+    atomic(file,JSON.stringify({version:1,commands:this.commands(),commandOrder:this.meta('commandOrder',[]),settings:this.settings(),announcements:this.meta('announcements',[]),announcementSettings:this.meta('announcementSettings'),draft:this.meta('draft'),timerDraft:this.meta('timerDraft')},null,2));
     const files=fs.readdirSync(folder).filter(n=>/^\d+-[a-f0-9-]+\.json$/.test(n)).sort();
     for(const old of files.slice(0,-20))fs.unlinkSync(path.join(folder,old));
   }

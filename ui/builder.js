@@ -141,7 +141,9 @@ document.addEventListener('click',event=>void guard(async()=>{
 		}finally{button.disabled=false;}
 	}
 	if(action==='replyMode'){
-		collect();draft.responseMode=button.dataset.mode;await persistDraft();renderEditor();icons();
+		collect();draft.responseMode=button.dataset.mode;
+		if(draft.responseMode==='number'&&!draft.steps.some(s=>s.type==='number'&&s.variable===draft.responseVariable))draft.responseVariable=draft.steps.find(s=>s.type==='number')?.variable;
+		await persistDraft();renderEditor();icons();
 	}
 	if(action==='insertVariable'){
 		const field=lastTemplateField?.isConnected?lastTemplateField:document.querySelector('[data-field="responses"]');

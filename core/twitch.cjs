@@ -31,10 +31,10 @@ class Twitch{
         const listener=new sdk.EventSubWsListener({apiClient:this.api,logger:{minLevel:'error'}});
         this.listener=listener;this.socketSince=Date.now();this.set('connecting');
         const current=()=>gen===this.generation;
-        listener.onSubscriptionCreateSuccess(()=>{if(current()){this.set('ready');void this.refreshAudience();}});
+        listener.onSubscriptionCreateSuccess(()=>{if(current()){this.set('ready');void this.refreshAudience();void this.refreshLive();void this.drain();}});
         listener.onSubscriptionCreateFailure(()=>{if(current())this.set('error');});
         listener.onRevoke(()=>{if(current()){this.stop();this.auth.invalidate('Нужно заново войти через Twitch и разрешить доступ.');}});
-        listener.onUserSocketDisconnect(()=>{if(current()){this.socketSince=Date.now();this.queue=[];this.audienceJob=null;this.audienceNextAt=0;this.engine.audience.clear('onlineOffline');this.set('reconnecting');}});
+        listener.onUserSocketDisconnect(()=>{if(current()){this.socketSince=Date.now();this.audienceJob=null;this.audienceNextAt=0;this.engine.audience.clear('onlineOffline');this.set('reconnecting');}});
         listener.onChannelChatMessage(user.id,user.id,event=>{
           if(!current())return;
           this.receive({id:event.messageId,text:event.messageText,userId:event.chatterId,login:event.chatterName,name:event.chatterDisplayName,
@@ -52,18 +52,23 @@ class Twitch{
     finally{this.busy=false;}
   }
   async refreshLive(){
-    if(!this.store.meta?.('announcements',[]).some(t=>t.enabled)||this.now()-this.liveCheckedAt<60000)return;
+    if(!this.api?.streams||this.liveJob||this.now()-this.liveCheckedAt<60000)return;
     const gen=this.generation;
+    this.liveJob=true;
     try{
-      const live=!!await this.api.streams.getStreamByUserId(this.auth.saved.user.id);
-      if(gen===this.generation){this.live=live;this.liveCheckedAt=this.now();}
+      const stream=await this.api.streams.getStreamByUserId(this.auth.saved.user.id);
+      if(gen===this.generation){
+        this.live=!!stream;this.liveCheckedAt=this.now();
+        this.engine.spam.session(this.auth.saved.user.id,stream?.id||null);
+      }
     }catch{if(gen===this.generation){this.live=false;this.liveCheckedAt=this.now();}}
+    finally{this.liveJob=false;}
   }
   canAnnounce(){return !!this.auth.saved?.token?.scope?.includes('moderator:manage:announcements');}
   scheduleAnnouncement(){
     if(this.test||this.queue.length||this.sending||this.status!=='ready'||!this.canAnnounce())return;
     const timer=this.announcements.next(this.live&&this.now()-this.liveCheckedAt<90000);if(!timer)return;
-    this.queue.push({message:timer.text,color:timer.color,delivery:'announcement',timerId:timer.id,command:timer.name,at:Date.now()});
+    this.queue.push({message:timer.text,color:timer.color,delivery:'announcement',timerId:timer.id,command:timer.name,at:this.now()});
     void this.drain();
   }
   async refreshAudience(){
@@ -112,28 +117,33 @@ class Twitch{
   }
   receive(event){
     try{
-      const now=Date.now();
+      const now=this.now();
       for(const [text,until]of this.outgoing)if(until<now)this.outgoing.delete(text);
       event.echo=event.userId===event.channelId&&this.outgoing.has(event.text);
       if(!this.store.settings().paused)this.announcements.activity(event);
       const result=this.engine.receive(event);if(!result)return;
       if(!result.messages.length){this.store.log(result.reason,{command:result.command,user:result.user});return;}
-      if(this.status!=='ready'||this.queue.length+result.messages.length>30){this.store.log('queueFull',{command:result.command});return;}
+      if(result.reason.startsWith('spam'))this.store.log(result.reason,{command:result.command,user:result.user,seconds:result.seconds});
+      if(!['ready','reconnecting'].includes(this.status)||this.queue.length+result.messages.length>120){this.store.log('queueFull',{command:result.command,user:result.user});return;}
       if(result.delivery==='announcement'&&!this.canAnnounce()){this.store.log('announcementPermission',{command:result.command});return;}
-      for(const message of result.messages)this.queue.push({message,command:result.command,user:result.user,delivery:result.delivery,color:result.color,at:Date.now()});
+      // Interactive replies take precedence over an automatic announcement still waiting to send.
+      const timerIndex=this.queue.findIndex(item=>item.timerId);
+      const items=result.messages.map(message=>({message,command:result.command,user:result.user,delivery:result.delivery,color:result.color,at:now}));
+      this.queue.splice(timerIndex<0?this.queue.length:timerIndex,0,...items);
       void this.drain();
-    }catch(e){this.store.log('commandError',{code:['messageTooLong'].includes(e.message)?e.message:'invalidCommand'});}
+    }catch(e){this.store.log('commandError',{code:['messageTooLong','invalidNumberSource'].includes(e.message)?e.message:'invalidCommand'});}
   }
   async drain(){
     if(this.sending||!this.queue.length)return;
-    if(!this.api||this.status!=='ready'||this.store.settings().paused){this.queue=[];return;}
-    const now=Date.now();this.sentAt=this.sentAt.filter(t=>now-t<30000);
+    if(this.store.settings().paused){this.queue=[];return;}
+    if(!this.api||this.status!=='ready')return;
+    const now=this.now();this.sentAt=this.sentAt.filter(t=>now-t<30000);
     const wait=Math.max(0,(this.lastSent||0)+1200-now,this.queue[0].delivery==='announcement'?(this.lastAnnouncement||0)+2100-now:0,this.sentAt.length>=20?this.sentAt[0]+30000-now:0);
     if(wait){clearTimeout(this.sendTimer);this.sendTimer=setTimeout(()=>void this.drain(),wait+5);return;}
     const item=this.queue.shift();
-    if(now-item.at>20000){this.store.log('expired',{command:item.command});return this.drain();}
+    if(now-item.at>300000){this.store.log('expired',{command:item.command,user:item.user});return this.drain();}
     if(item.timerId&&this.announcements.next(this.live&&this.now()-this.liveCheckedAt<90000)?.id!==item.timerId)return this.drain();
-    if(item.delivery==='announcement'&&this.announcements.duplicate(item.message)){this.store.log('duplicateAnnouncement',{command:item.command});return this.drain();}
+    if(item.timerId&&this.announcements.duplicate(item.message)){this.store.log('duplicateAnnouncement',{command:item.command});return this.drain();}
     this.sending=true;const gen=this.generation;
     this.lastSent=now;this.sentAt.push(now);
     this.outgoing.set(item.message,now+60000);

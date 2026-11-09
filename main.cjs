@@ -41,6 +41,7 @@ app.whenReady().then(async()=>{
   const actions={
     state:()=>state(),
     save:input=>{const result=store.save(input);store.setMeta('draft',null);return result;},
+    reorder:ids=>store.reorder(ids),
     draft:input=>{if(input&&JSON.stringify(input).length>600000)throw Error('tooLong');store.setMeta('draft',input);},
     create:kind=>{const c=(examples(store.settings().language).find(e=>e.key===kind)||examples(store.settings().language)[0]).command;c.enabled=false;const base=c.trigger;let n=2;while(store.commands().some(x=>[x.trigger,...x.aliases].includes(c.trigger)))c.trigger=base+n++;return store.save(c);},
     examples:()=>store.addExamples(),

@@ -63,4 +63,27 @@ class SpamGuard {
 		return result;
 	}
 }
-module.exports = {SpamGuard};
+const quietMessage={
+	ru:'Команды чата на перезарядке. Попробуйте чуть позже.',
+	uk:'Команди чату на перезарядці. Спробуйте трохи пізніше.',
+	en:'Chat commands are on cooldown. Please try again shortly.'
+};
+
+// Count accepted commands, not attempts or the number of lines they send.
+class QuietWindow {
+	constructor(now=Date.now){this.now=now;this.channel=null;this.clear();}
+	clear(){this.accepted=[];this.lastNotice=-Infinity;this.sinceNotice=5;}
+	observe(channel){
+		if(this.channel!==channel){this.clear();this.channel=channel;}
+		this.sinceNotice=Math.min(5,this.sinceNotice+1);
+	}
+	full(config){
+		const cutoff=this.now()-60000;
+		while(this.accepted.length&&this.accepted[0]<=cutoff)this.accepted.shift();
+		return !!config.quietMode&&this.accepted.length>=(config.quietPerMinute??5);
+	}
+	record(){this.accepted.push(this.now());}
+	canNotify(){return this.sinceNotice>=5&&this.now()-this.lastNotice>=60000;}
+	notified(){this.lastNotice=this.now();this.sinceNotice=0;}
+}
+module.exports = {SpamGuard,QuietWindow,quietMessage};

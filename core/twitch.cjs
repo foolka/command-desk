@@ -1,5 +1,5 @@
 const {loadSdk,CHATTERS_SCOPE}=require('./twitch-auth.cjs');
-const {Engine}=require('./engine.cjs');
+const {Engine,chatText}=require('./engine.cjs');
 const {Announcements}=require('./announcements.cjs');
 class Twitch{
   constructor({auth,store,sdk=loadSdk,test=false,now=Date.now}){
@@ -119,17 +119,21 @@ class Twitch{
     try{
       const now=this.now();
       for(const [text,until]of this.outgoing)if(until<now)this.outgoing.delete(text);
-      event.echo=event.userId===event.channelId&&this.outgoing.has(event.text);
+      event.echo=event.userId===event.channelId&&this.outgoing.has(chatText(event.text));
       if(!this.store.settings().paused)this.announcements.activity(event);
-      const result=this.engine.receive(event);if(!result)return;
+      let remember;
+      const result=this.engine.receive(event,commit=>{remember=commit;});if(!result)return;
+      const quietNotice=result.reason==='quietCooldown';
+      if(quietNotice&&(!result.messages.length||this.sendingQuiet||this.queue.some(item=>item.quietNotice)))return;
       if(!result.messages.length){this.store.log(result.reason,{command:result.command,user:result.user});return;}
       if(result.reason.startsWith('spam'))this.store.log(result.reason,{command:result.command,user:result.user,seconds:result.seconds});
       if(!['ready','reconnecting'].includes(this.status)||this.queue.length+result.messages.length>120){this.store.log('queueFull',{command:result.command,user:result.user});return;}
       if(result.delivery==='announcement'&&!this.canAnnounce()){this.store.log('announcementPermission',{command:result.command});return;}
       // Interactive replies take precedence over an automatic announcement still waiting to send.
       const timerIndex=this.queue.findIndex(item=>item.timerId);
-      const items=result.messages.map(message=>({message,command:result.command,user:result.user,delivery:result.delivery,color:result.color,at:now}));
+      const items=result.messages.map(message=>({message,command:result.command,user:result.user,delivery:result.delivery,color:result.color,at:now,...(quietNotice?{quietNotice:true}:{})}));
       this.queue.splice(timerIndex<0?this.queue.length:timerIndex,0,...items);
+      remember?.();
       void this.drain();
     }catch(e){this.store.log('commandError',{code:['messageTooLong','invalidNumberSource'].includes(e.message)?e.message:'invalidCommand'});}
   }
@@ -142,11 +146,13 @@ class Twitch{
     if(wait){clearTimeout(this.sendTimer);this.sendTimer=setTimeout(()=>void this.drain(),wait+5);return;}
     const item=this.queue.shift();
     if(now-item.at>300000){this.store.log('expired',{command:item.command,user:item.user});return this.drain();}
+    if(item.quietNotice&&(!this.engine.quiet.full(this.store.settings())||!this.engine.quiet.canNotify()))return this.drain();
     if(item.timerId&&this.announcements.next(this.live&&this.now()-this.liveCheckedAt<90000)?.id!==item.timerId)return this.drain();
     if(item.timerId&&this.announcements.duplicate(item.message)){this.store.log('duplicateAnnouncement',{command:item.command});return this.drain();}
-    this.sending=true;const gen=this.generation;
+    this.sending=true;this.sendingQuiet=!!item.quietNotice;const gen=this.generation;
     this.lastSent=now;this.sentAt.push(now);
-    this.outgoing.set(item.message,now+60000);
+    this.outgoing.set(chatText(item.message),now+60000);
+    if(item.quietNotice)this.engine.quiet.notified();
     try{
       let sent={};
       if(item.delivery==='announcement'){
@@ -156,11 +162,11 @@ class Twitch{
         this.announcements.reserve(item.message,item.timerId);
         await this.api.chat.sendAnnouncement(this.auth.saved.user.id,{message:item.message,color:item.color});
       }else sent=await this.api.chat.sendChatMessage(this.auth.saved.user.id,item.message);
-      if(gen===this.generation){if(sent.id)this.store.claim(sent.id);this.store.log('sent',{command:item.command,user:item.user,message:item.message});}
+      if(gen===this.generation){if(item.quietNotice)this.engine.quiet.notified();if(sent.id)this.store.claim(sent.id);this.store.log('sent',{command:item.command,user:item.user,message:item.message});}
     }catch(e){
       if(gen===this.generation)this.store.log('sendFailed',{command:item.command,status:Number(e.statusCode)||0});
       // A timeout may mean the message arrived. Never resend an ambiguous request.
-    }finally{this.sending=false;if(gen===this.generation)void this.drain();}
+    }finally{this.sending=false;this.sendingQuiet=false;if(gen===this.generation)void this.drain();}
   }
   dispose(){clearInterval(this.timer);this.stop();}
 }

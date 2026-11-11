@@ -1,5 +1,6 @@
 const reliabilityCopy = {
 	ru: {
+		quietMode:'Режим тишины',quietPerMinute:'Команд за минуту на весь чат',quietCooldown:'Команды чата на перезарядке',quietHelp:'Общий лимит всех команд зрителей за последние 60 секунд. Команда с несколькими ответами считается один раз. Уведомление об откате появляется не чаще раза в минуту и только после пяти новых сообщений зрителей. Автоанонсы и локальные тесты не считаются.',
 		cancelAction:'Отмена',
 		pendingChanges:'Есть черновик',
 		sidebarColor:'Цвет боковой полосы',clearSidebarColor:'Сбросить цвет полосы',dragCommand:'Перетащить команду',moveCommandUp:'Поднять команду в списке',moveCommandDown:'Опустить команду в списке',invalidOrder:'Список команд изменился. Обнови его и повтори перемещение.',invalidColor:'Выбери цвет полосы.',
@@ -12,6 +13,7 @@ const reliabilityCopy = {
 		responseHelp:'«Все» отправляет до 3 строк. Случайный режим и выбор по числу отправляют одну из максимум 100 строк. В режиме по числу порядок строк соответствует возрастанию результата.',invalidResponses:'Добавь ответ: до 3 строк в режиме «Все», до 100 при выборе одной строки.'
 	},
 	uk: {
+		quietMode:'Режим тиші',quietPerMinute:'Команд за хвилину на весь чат',quietCooldown:'Команди чату на перезарядці',quietHelp:'Спільний ліміт усіх команд глядачів за останні 60 секунд. Команда з кількома відповідями рахується один раз. Сповіщення з’являється не частіше ніж раз на хвилину і лише після п’яти нових повідомлень глядачів. Автооголошення та локальні тести не враховуються.',
 		cancelAction:'Скасувати',
 		pendingChanges:'Є чернетка',
 		sidebarColor:'Колір бічної смуги',clearSidebarColor:'Скинути колір смуги',dragCommand:'Перетягнути команду',moveCommandUp:'Підняти команду у списку',moveCommandDown:'Опустити команду у списку',invalidOrder:'Список команд змінився. Онови його й повтори переміщення.',invalidColor:'Обери колір смуги.',
@@ -24,6 +26,7 @@ const reliabilityCopy = {
 		responseHelp:'«Усі» надсилає до 3 рядків. Випадковий режим та вибір за числом надсилають один із максимум 100 рядків. У режимі за числом порядок рядків відповідає зростанню результату.',invalidResponses:'Додай відповідь: до 3 рядків у режимі «Усі», до 100 для вибору одного.'
 	},
 	en: {
+		quietMode:'Quiet mode',quietPerMinute:'Commands per minute across chat',quietCooldown:'Chat commands are on cooldown',quietHelp:'One limit for all viewer commands over the last 60 seconds. A multi-line reply counts once. A cooldown notice repeats only after a minute and five new viewer messages. Timed announcements and local tests do not count.',
 		cancelAction:'Cancel',
 		pendingChanges:'Draft changes',
 		sidebarColor:'Sidebar stripe color',clearSidebarColor:'Reset stripe color',dragCommand:'Drag command',moveCommandUp:'Move command up',moveCommandDown:'Move command down',invalidOrder:'The command list changed. Refresh and try moving again.',invalidColor:'Choose a stripe color.',
@@ -51,6 +54,13 @@ function renderProtection() {
 		<div class="page-scroll">
 			<form id="protection-form" class="settings-page b-protection">
 				<h2>${t('protection')}</h2>
+				<label class="check">
+					<input data-setting="quietMode" type="checkbox" ${config.quietMode?'checked':''}>
+					${t('quietMode')}${help('quietHelp')}
+				</label>
+				<div class="grid two">
+					${label('quietPerMinute',`<input data-setting="quietPerMinute" type="number" value="${config.quietPerMinute}" min="1" max="120" required>`)}
+				</div>
 				<label class="check"><input data-setting="antiSpam" type="checkbox" ${config.antiSpam?'checked':''}>${t('antiSpam')}${help('spamHelp')}</label>
 				<div class="grid two">
 					${[['spamRepeats',2,20],['spamWindowSeconds',5,3600],['spamFirstBlockSeconds',5,86400],['spamRepeatBlockSeconds',5,86400]].map(([key,min,max])=>label(key,`<input data-setting="${key}" type="number" value="${config[key]}" min="${min}" max="${max}" required>`)).join('\n')}

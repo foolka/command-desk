@@ -72,6 +72,7 @@ function normalize(input) {
 function settings(input={}) {
   return {language:['ru','uk','en'].includes(input.language)?input.language:'ru',
     theme:input.theme==='dark'?'dark':'light',paused:!!input.paused,
+    quietMode:input.quietMode===true,quietPerMinute:number(input.quietPerMinute??5,1,120),
     antiSpam:input.antiSpam!==false,spamRepeats:number(input.spamRepeats??3,2,20),
     spamWindowSeconds:number(input.spamWindowSeconds??60,5,3600),
     spamFirstBlockSeconds:number(input.spamFirstBlockSeconds??90,5,86400),

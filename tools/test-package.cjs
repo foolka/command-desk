@@ -12,9 +12,15 @@ async function launch(){app=await electron.launch({executablePath:path.join(fold
   let page=await launch();
   let s=await page.evaluate(()=>window.desk.state());assert.equal(s.value.test,true);assert.equal(s.value.commands.length,0);
   await page.evaluate(()=>window.desk.create('target'));
+  await page.locator('[data-view=protection]').click();
+  const quiet=page.locator('[data-setting=quietMode]'),limit=page.locator('[data-setting=quietPerMinute]');
+  assert.equal(await quiet.isChecked(),false);assert.equal(await limit.inputValue(),'5');
+  await quiet.check();await limit.fill('3');await page.locator('#protection-form button[type=submit]').click();
+  await page.waitForFunction(async()=>{const s=(await window.desk.state()).value.settings;return s.quietMode&&s.quietPerMinute===3;});
   const id=JSON.parse(fs.readFileSync(path.join(profile,'profile-identity.json'),'utf8')).id;
   await app.close();app=null;page=await launch();
   s=await page.evaluate(()=>window.desk.state());assert.equal(s.value.commands.length,1);
+  assert.equal(s.value.settings.quietMode,true);assert.equal(s.value.settings.quietPerMinute,3);
   const preview=await page.evaluate(command=>window.desk.preview({command,user:'ViewerOne',message:command.trigger+' @ViewerTwo',names:['ViewerTwo']}),s.value.commands[0]);
   assert.equal(preview.ok,true);assert.ok(preview.value.messages[0].includes('@ViewerOne'));assert.ok(preview.value.messages[0].includes('@ViewerTwo'));
   assert.equal(JSON.parse(fs.readFileSync(path.join(profile,'profile-identity.json'),'utf8')).id,id);

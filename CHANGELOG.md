@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.5 - Local
+
+- Optional Quiet mode in Protection: one shared rolling 60-second limit, default five commands when enabled. An accepted multi-line response counts once. Automatic announcements and previews do not use the budget.
+- When the budget runs out, a single ordinary chat notice can be queued. Stale notices are dropped. Repetition requires both a minute and five new viewer messages since the previous notice.
+- Trailing spaces and invisible chat padding no longer turn an otherwise empty argument into an invalid target. Explicit nicknames, aliases, cooldowns and anti-spam still work as before.
+
+## 0.4.4 - Local
+
+- Random reply lines and random list steps avoid the same viewer's previous line for that command when another distinct line exists. Aliases share the same history.
+- Automatic participant draws skip the channel's last randomly selected Twitch user if another eligible chatter is online. Explicit mentions, self targets, number rolls and number-based text keep their existing meaning.
+- Draw history is in memory for the current app session. Local previews are independent of chat, and requests rejected before queueing do not change the live draw history. No profile migration.
+
 ## 0.4.3 - 2026-11-09
 
 - Reply format uses directly clickable Chat message / Twitch announcement buttons instead of a native popup.

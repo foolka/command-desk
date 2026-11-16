@@ -58,6 +58,7 @@ async function save(){await page.locator('button[type=submit]').click();await pa
   assert.equal(await page.locator('.command-row').count(),2);
   await page.locator('[data-field=trigger]').fill('!кто');await save();
   await page.locator('#nav [data-view=connection]').click();
+  await page.locator('.data-path').evaluate(el=>{el.textContent='%APPDATA%\\CommandDesk';});
   await page.screenshot({path:path.join(root,'docs/screenshots/connection.png')});
   await page.locator('[data-view=audience]').click();
   assert.equal(await page.locator('th').nth(1).textContent(),'Присутствие');
